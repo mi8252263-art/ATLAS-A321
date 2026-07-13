@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import azkoLogo from '../imports/logo-azko_ratio-16x9__1_.jpg'
 import { formatRupiahFull, type User } from '../data/mockData'
 import { parseIncentiveSheets } from '../services/incentiveParser'
+import { useMobile } from '../hooks/useMobile'
 
 interface Props { user: User; onBack: () => void }
 
@@ -207,15 +208,17 @@ function UnconditionalRowCard({ row, userNik }: { row: NonNullable<ReturnType<ty
 
 function SkuRowCard({ row }: { row: NonNullable<ReturnType<typeof parseIncentiveSheets>['sku']['rows']>[number] }) {
   return (
-    <div style={{ background: S.card, border: `1.5px solid ${S.border}`, borderRadius: 16, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start' }}>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ color: S.text, fontWeight: 800, fontSize: 15, marginBottom: 4 }}>{row.name || row.sku}</div>
-          <div style={{ color: S.muted, fontSize: 12 }}>SKU: {row.sku || '—'}</div>
+    <div style={{ background: S.card, border: `1.5px solid ${S.border}`, borderRadius: 16, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, alignItems: 'stretch' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ color: S.text, fontWeight: 800, fontSize: 15, marginBottom: 4 }}>{row.name || row.sku}</div>
+            <div style={{ color: S.muted, fontSize: 12 }}>SKU: {row.sku || '—'}</div>
+          </div>
+          {row.imageUrl ? (
+            <img src={row.imageUrl} alt={row.name || row.sku} style={{ width: '100%', maxWidth: 96, height: 96, objectFit: 'cover', borderRadius: 16, border: `1px solid ${S.border}`, background: '#f8fafc' }} />
+          ) : null}
         </div>
-        {row.imageUrl ? (
-          <img src={row.imageUrl} alt={row.name || row.sku} style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 16, border: `1px solid ${S.border}`, background: '#f8fafc' }} />
-        ) : null}
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ color: S.sub, fontSize: 13, lineHeight: 1.5 }}>{row.requirement || '—'}</div>
@@ -253,13 +256,17 @@ function SummaryCard({ item, onClick }: { item: IncentiveSummaryItem; onClick: (
         </div>
         <span style={{ color: S.muted, fontSize: 20 }}>›</span>
       </div>
-      <div style={{ color: S.text, fontSize: 20, fontWeight: 800 }}>{formatRupiahFull(item.achieved)}</div>
+      {!isSku ? (
+        <div style={{ color: S.text, fontSize: 20, fontWeight: 800 }}>{formatRupiahFull(item.achieved)}</div>
+      ) : (
+        <div style={{ marginTop: 8, color: S.muted, fontSize: 13 }}>Ringkasan tersedia — buka detail SKU</div>
+      )}
       {isSku ? <div style={{ marginTop: 12, color: color, fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Lihat detail SKU</div> : null}
     </button>
   )
 }
 
-function SubPageView({ type, data, user, onBack: goBack }: { type: SubPage; data: ReturnType<typeof parseIncentiveSheets> | null; user: User; onBack: () => void }) {
+function SubPageView({ type, data, user, isMobile, onBack: goBack }: { type: SubPage; data: ReturnType<typeof parseIncentiveSheets> | null; user: User; isMobile: boolean; onBack: () => void }) {
   const [skuQuery, setSkuQuery] = useState('')
   const [skuSort, setSkuSort] = useState<'sku' | 'name'>('sku')
   const [skuOrder, setSkuOrder] = useState<'asc' | 'desc'>('asc')
@@ -287,7 +294,7 @@ function SubPageView({ type, data, user, onBack: goBack }: { type: SubPage; data
 
   return (
     <div style={{ minHeight: '100vh', background: S.bg }}>
-      <header style={{ background: S.card, borderBottom: `1px solid ${S.border}`, padding: '14px 32px', display: 'flex', alignItems: 'center', gap: 12, position: 'sticky', top: 0, zIndex: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+      <header style={{ background: S.card, borderBottom: `1px solid ${S.border}`, padding: isMobile ? '10px 14px' : '14px 32px', display: 'flex', alignItems: 'center', gap: 12, position: 'sticky', top: 0, zIndex: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
         <img src={azkoLogo} alt="Azko" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', objectPosition: 'center', boxShadow: '0 2px 8px rgba(217,49,25,0.25)' }}/>
         <span style={{ color: S.text, fontWeight: 800, fontSize: 14, letterSpacing: '0.06em' }}>ATLAS</span>
         <div style={{ width: 1, height: 20, background: S.border }}/>
@@ -300,24 +307,24 @@ function SubPageView({ type, data, user, onBack: goBack }: { type: SubPage; data
         <span style={{ color: S.muted, fontSize: 12, marginLeft: 'auto' }}>{user.nama}</span>
       </header>
 
-      <main style={{ maxWidth: 900, margin: '0 auto', padding: '32px 24px' }}>
+      <main style={{ maxWidth: '100%', margin: '0 auto', padding: isMobile ? '18px 14px' : '32px 24px' }}>
         <div style={{ marginBottom: 20 }}>
           <h2 style={{ color: S.text, fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', marginBottom: 6 }}>{title}</h2>
           <p style={{ color: S.muted, fontSize: 14 }}>{subtitle}</p>
         </div>
 
         {isSku ? (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 18, alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', flexWrap: 'wrap', gap: 10, marginBottom: 18, alignItems: isMobile ? 'stretch' : 'center' }}>
             <input
               value={skuQuery}
               onChange={event => setSkuQuery(event.target.value)}
               placeholder="Cari SKU atau nama produk"
-              style={{ flex: '1 1 280px', minWidth: 240, border: `1px solid ${S.border}`, borderRadius: 14, padding: '12px 14px', fontSize: 14, color: S.text, background: S.card }}
+              style={{ width: '100%', minWidth: 0, border: `1px solid ${S.border}`, borderRadius: 14, padding: '12px 14px', fontSize: 14, color: S.text, background: S.card }}
             />
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button type="button" onClick={() => setSkuSort('sku')} style={{ borderRadius: 14, border: `1px solid ${skuSort === 'sku' ? color : S.border}`, background: skuSort === 'sku' ? color : S.card, color: skuSort === 'sku' ? '#fff' : S.text, padding: '10px 14px', cursor: 'pointer' }}>Sort SKU</button>
-              <button type="button" onClick={() => setSkuSort('name')} style={{ borderRadius: 14, border: `1px solid ${skuSort === 'name' ? color : S.border}`, background: skuSort === 'name' ? color : S.card, color: skuSort === 'name' ? '#fff' : S.text, padding: '10px 14px', cursor: 'pointer' }}>Sort Nama</button>
-              <button type="button" onClick={() => setSkuOrder(prev => prev === 'asc' ? 'desc' : 'asc')} style={{ borderRadius: 14, border: `1px solid ${S.border}`, background: S.card, color: S.text, padding: '10px 14px', cursor: 'pointer' }}>{skuOrder === 'asc' ? 'A→Z' : 'Z→A'}</button>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', width: '100%', justifyContent: isMobile ? 'stretch' : 'flex-start' }}>
+              <button type="button" onClick={() => setSkuSort('sku')} style={{ flex: isMobile ? '1 1 100%' : undefined, borderRadius: 14, border: `1px solid ${skuSort === 'sku' ? color : S.border}`, background: skuSort === 'sku' ? color : S.card, color: skuSort === 'sku' ? '#fff' : S.text, padding: '10px 14px', cursor: 'pointer' }}>Sort SKU</button>
+              <button type="button" onClick={() => setSkuSort('name')} style={{ flex: isMobile ? '1 1 100%' : undefined, borderRadius: 14, border: `1px solid ${skuSort === 'name' ? color : S.border}`, background: skuSort === 'name' ? color : S.card, color: skuSort === 'name' ? '#fff' : S.text, padding: '10px 14px', cursor: 'pointer' }}>Sort Nama</button>
+              <button type="button" onClick={() => setSkuOrder(prev => prev === 'asc' ? 'desc' : 'asc')} style={{ flex: isMobile ? '1 1 100%' : undefined, borderRadius: 14, border: `1px solid ${S.border}`, background: S.card, color: S.text, padding: '10px 14px', cursor: 'pointer' }}>{skuOrder === 'asc' ? 'A→Z' : 'Z→A'}</button>
             </div>
           </div>
         ) : null}
@@ -343,6 +350,7 @@ function SubPageView({ type, data, user, onBack: goBack }: { type: SubPage; data
 export default function ForecastingInsentif({ user, onBack }: Props) {
   const [subPage, setSubPage] = useState<SubPage | null>(null)
   const { data, loading } = useIncentiveData()
+  const isMobile = useMobile(720)
 
   const summary = useMemo<IncentiveSummaryItem[]>(() => {
     if (!data) return []
@@ -384,27 +392,32 @@ export default function ForecastingInsentif({ user, onBack }: Props) {
   const totalProjected = totalAchieved + totalPotential
 
   if (subPage) {
-    return <SubPageView type={subPage} data={data} user={user} onBack={() => setSubPage(null)} />
+    return <SubPageView type={subPage} data={data} user={user} isMobile={isMobile} onBack={() => setSubPage(null)} />
   }
 
   return (
     <div style={{ minHeight: '100vh', background: S.bg }}>
-      <header style={{ background: S.card, borderBottom: `1px solid ${S.border}`, padding: '14px 32px', display: 'flex', alignItems: 'center', gap: 12, position: 'sticky', top: 0, zIndex: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-        <img src={azkoLogo} alt="Azko" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', objectPosition: 'center', boxShadow: '0 2px 8px rgba(217,49,25,0.25)' }}/>
-        <span style={{ color: S.text, fontWeight: 800, fontSize: 14, letterSpacing: '0.06em' }}>ATLAS</span>
-        <div style={{ width: 1, height: 20, background: S.border }}/>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', color: S.muted, fontSize: 13, cursor: 'pointer', fontWeight: 600, padding: 0, transition: 'color 0.15s' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = S.text }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = S.muted }}
-        >← Menu</button>
-        <div style={{ width: 1, height: 20, background: S.border }}/>
-        <span style={{ color: S.text, fontWeight: 700, fontSize: 14 }}>Forecasting Insentif</span>
-        <span style={{ color: S.muted, fontSize: 12 }}>{user.nama}</span>
+      <header style={{ background: S.card, borderBottom: `1px solid ${S.border}`, padding: isMobile ? '16px 18px' : '14px 32px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'flex-start' : 'center', gap: 12, position: 'sticky', top: 0, zIndex: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', flexWrap: 'wrap' }}>
+          <img src={azkoLogo} alt="Azko" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', objectPosition: 'center', boxShadow: '0 2px 8px rgba(217,49,25,0.25)' }}/>
+          <span style={{ color: S.text, fontWeight: 800, fontSize: 14, letterSpacing: '0.06em' }}>ATLAS</span>
+          <div style={{ width: 1, height: 20, background: S.border }} />
+          <button onClick={onBack} style={{ background: 'none', border: 'none', color: S.muted, fontSize: 13, cursor: 'pointer', fontWeight: 600, padding: 0, transition: 'color 0.15s' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = S.text }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = S.muted }}
+          >← Menu</button>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', width: '100%', justifyContent: isMobile ? 'flex-start' : 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ color: S.text, fontWeight: 700, fontSize: 14 }}>Forecasting Insentif</span>
+            <span style={{ color: S.muted, fontSize: 12 }}>{user.nama}</span>
+          </div>
+        </div>
       </header>
 
-      <main style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.65fr 1fr', gap: 20, alignItems: 'stretch' }}>
-          <div style={{ position: 'relative', borderRadius: 28, overflow: 'hidden', background: 'linear-gradient(135deg, #4338ca 0%, #7c3aed 100%)', minHeight: 260, padding: '28px 30px', boxShadow: '0 20px 50px rgba(67, 56, 202, 0.18)', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 22 }}>
+      <main style={{ maxWidth: isMobile ? '100%' : 1100, margin: '0 auto', padding: isMobile ? '18px 14px' : '28px 32px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.65fr 1fr', gap: 20, alignItems: 'stretch' }}>
+          <div style={{ position: 'relative', borderRadius: 28, overflow: 'hidden', background: 'linear-gradient(135deg, #4338ca 0%, #7c3aed 100%)', minHeight: 260, padding: isMobile ? '22px 20px' : '28px 30px', boxShadow: '0 20px 50px rgba(67, 56, 202, 0.18)', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 22 }}>
             <div style={{ position: 'absolute', right: -40, top: -30, width: 140, height: 140, borderRadius: '50%', background: 'rgba(255, 255, 255, 0.14)' }} />
             <div style={{ position: 'absolute', right: 20, bottom: -30, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255, 255, 255, 0.08)' }} />
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
@@ -448,7 +461,7 @@ export default function ForecastingInsentif({ user, onBack }: Props) {
 
         <div>
           <div style={{ color: S.muted, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>Ringkasan per Tipe Insentif</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
             {loading ? (
               <div style={{ gridColumn: '1 / -1', padding: '16px 20px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, color: '#92400e', fontSize: 13 }}>
                 Memuat data insentif dari sheet...

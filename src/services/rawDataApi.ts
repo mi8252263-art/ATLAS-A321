@@ -79,6 +79,13 @@ function parseDate(s: string): Date | null {
     return new Date(y, b - 1, a)              // asumsi DD/MM/YYYY
   }
 
+  // ISO format YYYY-MM-DD
+  const mIso = str.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (mIso) {
+    const y = +mIso[1], mo = +mIso[2], d = +mIso[3]
+    return new Date(y, mo - 1, d)
+  }
+
   return null
 }
 
