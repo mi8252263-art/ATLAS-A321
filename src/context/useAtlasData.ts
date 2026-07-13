@@ -1,0 +1,1 @@
+export { useAtlasData } from './DataContext'
