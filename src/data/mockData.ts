@@ -10,7 +10,7 @@ export interface User {
 
 // USERS sheet: A=NIK, B=NAMA, C=ROLE, D=JOBTITLE, E=PASSWORD (data from row 2)
 export const USERS: User[] = [
-  { nik: '191924', nama: 'Muhammad Ihsar', role: 'admin', jobTitle: 'Manajer',      password: '123456' },
+  { nik: '191924', nama: 'Muhammad Ihsar', role: 'admin', jobTitle: 'Manajer',      password: 'IHSAN' },
   { nik: '187856', nama: 'MONICA',         role: 'user',  jobTitle: 'Sales',        password: '654321' },
   { nik: '121444', nama: 'NONA SETIANA',   role: 'user',  jobTitle: 'Sales',        password: '121444' },
   { nik: '176413', nama: 'Rahmadiame',     role: 'user',  jobTitle: 'Sales Advisor',password: 'azko123' },

@@ -6,6 +6,7 @@ import { useMobile } from '../hooks/useMobile'
 import { fetchAllYTD, type YTDEmployee } from '../services/rawDataApi'
 import { getTrackerUrl, setTrackerUrl, writeMenuConfigToSheet } from '../services/loginTracker'
 import { getMenuSettings, setMenuSetting } from './MenuPage'
+import { useAdminSettings } from '../context/AdminSettingsContext'
 import {
   AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -17,6 +18,12 @@ const S = {
   bg: '#f0f4ff', panel: '#fff', card: '#f8faff',
   border: '#e8edf8', text: '#1e293b', sub: '#64748b', muted: '#94a3b8',
   red: '#D93119',
+}
+
+function formatSettingValue(value: number) {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}Jt`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(0)}Rb`
+  return `${value}`
 }
 
 function acPct(pct: number) {
@@ -79,6 +86,7 @@ interface Props { user: User; onLogout: () => void }
 
 export default function AdminDashboard({ user, onLogout }: Props) {
   const { todayPerf, mtdPerf, loading, dailyDate, reload, users, reloadMenuConfig, menuConfig } = useAtlasData()
+  const { settings, updateTargetFormula, updateLayout } = useAdminSettings()
   const [page, setPage]             = useState<NavPage>('today')
   const [ytdAll, setYtdAll]         = useState<YTDEmployee[]>([])
   const [ytdLoading, setYtdLoading] = useState(false)
@@ -106,8 +114,22 @@ export default function AdminDashboard({ user, onLogout }: Props) {
     }
   }).sort((a, b) => b.achievement - a.achievement).map((r, i) => ({ ...r, rank: i + 1 }))
 
-  const pd      = page === 'mtd' ? mtdPerf : page === 'fullmonth' ? mtdPerf : todayPerf
-  const ranking = page === 'fullmonth' ? fullMonthRanking : (pd.ranking ?? [])
+  const dailyTarget = targetFormula.dailyTarget > 0 ? targetFormula.dailyTarget : todayPerf.target
+  const monthlyTarget = targetFormula.monthlyTarget > 0 ? targetFormula.monthlyTarget * (targetFormula.monthlyMultiplier || 1) : mtdPerf.target
+  const effectiveTarget = page === 'today' ? dailyTarget : monthlyTarget
+  const pd = page === 'mtd' ? { ...mtdPerf, target: monthlyTarget, achievement: monthlyTarget > 0 ? parseFloat(((mtdPerf.actual / monthlyTarget) * 100).toFixed(1)) : 0 }
+    : page === 'fullmonth' ? { ...mtdPerf, target: monthlyTarget, achievement: monthlyTarget > 0 ? parseFloat(((mtdPerf.actual / monthlyTarget) * 100).toFixed(1)) : 0 }
+    : { ...todayPerf, target: dailyTarget, achievement: dailyTarget > 0 ? parseFloat(((todayPerf.actual / dailyTarget) * 100).toFixed(1)) : 0 }
+  const ranking = page === 'fullmonth'
+    ? fullMonthRanking
+    : (pd.ranking ?? []).map(r => {
+        const target = r.target && r.target > 0 ? r.target : effectiveTarget
+        return {
+          ...r,
+          target,
+          achievement: target > 0 ? parseFloat(((r.value / target) * 100).toFixed(1)) : 0,
+        }
+      }).sort((a, b) => b.achievement - a.achievement).map((r, i) => ({ ...r, rank: i + 1 }))
 
   const teamTotal  = ranking.reduce((s, r) => s + r.value, 0)
   const avgAch     = ranking.length ? ranking.reduce((s, r) => s + r.achievement, 0) / ranking.length : 0
@@ -130,6 +152,11 @@ export default function AdminDashboard({ user, onLogout }: Props) {
   const sortedYTD   = [...ytdValid].sort((a, b) => b.ytdSalesPct - a.ytdSalesPct)
   const zoneOrder   = ['hijau', 'biru', 'kuning', 'oranye', 'pink', 'merah']
 
+  const targetFormula = settings.targetFormula
+  const layout = settings.layout
+  const primaryColor = layout.primaryColor || S.red
+  const accentColor = layout.accentColor || '#2563eb'
+  const cardRadius = layout.cardRadius || 18
   const NAV = [
     { key: 'today'     as NavPage, label: 'Today',      icon: '📅', sub: dailyDate    },
     { key: 'mtd'       as NavPage, label: 'MTD',        icon: '📊', sub: 'Berjalan'   },
@@ -168,9 +195,9 @@ export default function AdminDashboard({ user, onLogout }: Props) {
             {NAV.map(n => (
               <button key={n.key} onClick={() => setPage(n.key)} style={{
                 width: '100%', textAlign: 'left', padding: '10px 12px', borderRadius: 12, border: 'none', cursor: 'pointer',
-                background: page === n.key ? `${S.red}12` : 'transparent',
+                background: page === n.key ? `${primaryColor}12` : 'transparent',
                 transition: 'all 0.15s',
-                borderLeft: `3px solid ${page === n.key ? S.red : 'transparent'}`,
+                borderLeft: `3px solid ${page === n.key ? primaryColor : 'transparent'}`,
               }}
                 onMouseEnter={e => { if (page !== n.key) (e.currentTarget as HTMLElement).style.background = S.bg }}
                 onMouseLeave={e => { if (page !== n.key) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
@@ -178,7 +205,7 @@ export default function AdminDashboard({ user, onLogout }: Props) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 16 }}>{n.icon}</span>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: page === n.key ? S.red : S.text }}>{n.label}</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: page === n.key ? primaryColor : S.text }}>{n.label}</div>
                     <div style={{ fontSize: 10, color: S.muted }}>{n.sub}</div>
                   </div>
                 </div>
@@ -220,8 +247,8 @@ export default function AdminDashboard({ user, onLogout }: Props) {
             {NAV.map(n => (
               <button key={n.key} onClick={() => setPage(n.key)} style={{
                 flex: 1, padding: '8px 6px', borderRadius: 10, border: `1.5px solid ${page === n.key ? S.red : S.border}`,
-                background: page === n.key ? `${S.red}10` : 'transparent',
-                color: page === n.key ? S.red : S.muted, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                background: page === n.key ? `${primaryColor}10` : 'transparent',
+                color: page === n.key ? primaryColor : S.muted, fontSize: 11, fontWeight: 700, cursor: 'pointer',
               }}>
                 {n.icon} {n.label}
               </button>
@@ -255,15 +282,15 @@ export default function AdminDashboard({ user, onLogout }: Props) {
         {page !== 'ytd' && (
           <>
             {/* Summary stats */}
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 12 }}>
-              <StatCard label="Total Penjualan Tim" value={formatRupiah(teamTotal)} sub={`${ranking.length} personil`} accent={S.red} icon="💰" />
+            {layout.showSummaryCards && <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap: 12 }}>
+              <StatCard label="Total Penjualan Tim" value={formatRupiah(teamTotal)} sub={`${ranking.length} personil`} accent={primaryColor} icon="💰" />
               <StatCard label="Avg Achievement" value={`${avgAch.toFixed(1)}%`} sub="rata-rata tim" accent={acPct(avgAch)} icon="📈" />
               <StatCard label="Capai Target" value={String(above100)} sub={`≥100% dari ${ranking.length} orang`} accent="#16a34a" icon="✅" />
               <StatCard label="Perlu Perhatian" value={String(below80)} sub="di bawah 80%" accent="#dc2626" icon="⚠️" />
-            </div>
+            </div>}
 
             {/* Top & needs attention */}
-            {top && bottom && (
+            {layout.showTopPerformers && top && bottom && (
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
                 <div style={{ background: '#f0fdf4', border: '1.5px solid #bbf7d0', borderRadius: 18, padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
                   <div style={{ width: 48, height: 48, borderRadius: 14, background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 }}>🏆</div>
@@ -293,7 +320,7 @@ export default function AdminDashboard({ user, onLogout }: Props) {
             )}
 
             {/* Trend chart */}
-            {(() => {
+            {layout.showTrendChart && (() => {
               const trend = page === 'today' ? (todayPerf.dailyTrend ?? []) : (mtdPerf.monthlyTrend ?? mtdPerf.dailyTrend ?? [])
               if (trend.length < 2) return null
               return (
@@ -332,7 +359,7 @@ export default function AdminDashboard({ user, onLogout }: Props) {
             })()}
 
             {/* Full detail table */}
-            <div style={{ background: S.panel, border: `1.5px solid ${S.border}`, borderRadius: 18, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+            {layout.showRankingTable && <div style={{ background: S.panel, border: `1.5px solid ${S.border}`, borderRadius: `${cardRadius}px`, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
               <div style={{ padding: '12px 20px', borderBottom: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                 <SectionTitle title="Seluruh Personil" sub={page === 'today' ? dailyDate : page === 'mtd' ? 'vs target berjalan' : 'vs target penuh bulan ini'} />
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -394,7 +421,7 @@ export default function AdminDashboard({ user, onLogout }: Props) {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </div>}
           </>
         )}
 
@@ -589,8 +616,76 @@ export default function AdminDashboard({ user, onLogout }: Props) {
               </div>
             </div>
 
+            {/* Target Formula & Layout */}
+            <div style={{ padding: '22px 24px', background: '#fff', borderRadius: `${cardRadius}px`, border: `1.5px solid ${S.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: S.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 16 }}>Rumus Target & Tampilan</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: S.text }}>Target harian default</label>
+                <input
+                  type="number"
+                  value={targetFormula.dailyTarget}
+                  onChange={e => updateTargetFormula({ dailyTarget: Number(e.target.value || 0) })}
+                  style={{ padding: '10px 12px', borderRadius: 10, border: `1px solid ${S.border}` }}
+                />
+                <label style={{ fontSize: 12, fontWeight: 700, color: S.text }}>Target bulanan default</label>
+                <input
+                  type="number"
+                  value={targetFormula.monthlyTarget}
+                  onChange={e => updateTargetFormula({ monthlyTarget: Number(e.target.value || 0) })}
+                  style={{ padding: '10px 12px', borderRadius: 10, border: `1px solid ${S.border}` }}
+                />
+                <label style={{ fontSize: 12, fontWeight: 700, color: S.text }}>Multiplier target bulanan</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={targetFormula.monthlyMultiplier}
+                  onChange={e => updateTargetFormula({ monthlyMultiplier: Number(e.target.value || 1) })}
+                  style={{ padding: '10px 12px', borderRadius: 10, border: `1px solid ${S.border}` }}
+                />
+                <label style={{ fontSize: 12, fontWeight: 700, color: S.text }}>Mode pencapaian</label>
+                <select
+                  value={targetFormula.achievementMode}
+                  onChange={e => updateTargetFormula({ achievementMode: e.target.value as AdminSettings['targetFormula']['achievementMode'] })}
+                  style={{ padding: '10px 12px', borderRadius: 10, border: `1px solid ${S.border}` }}
+                >
+                  <option value="actual_vs_target">Actual vs Target</option>
+                  <option value="daily_prorated">Daily Prorated</option>
+                </select>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: S.text }}>Warna utama</label>
+                  <input type="color" value={layout.primaryColor} onChange={e => updateLayout({ primaryColor: e.target.value })} />
+                  <label style={{ fontSize: 12, fontWeight: 700, color: S.text }}>Warna aksen</label>
+                  <input type="color" value={layout.accentColor} onChange={e => updateLayout({ accentColor: e.target.value })} />
+                  <label style={{ fontSize: 12, fontWeight: 700, color: S.text }}>Radius card</label>
+                  <input type="range" min="10" max="30" value={layout.cardRadius} onChange={e => updateLayout({ cardRadius: Number(e.target.value) })} />
+                  <div style={{ fontSize: 11, color: S.muted }}>Nilai saat ini: {layout.cardRadius}px</div>
+                </div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: S.text }}>
+                    <input type="checkbox" checked={layout.showSummaryCards} onChange={() => updateLayout({ showSummaryCards: !layout.showSummaryCards })} />
+                    Tampilkan ringkasan
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: S.text }}>
+                    <input type="checkbox" checked={layout.showTopPerformers} onChange={() => updateLayout({ showTopPerformers: !layout.showTopPerformers })} />
+                    Top performer
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: S.text }}>
+                    <input type="checkbox" checked={layout.showTrendChart} onChange={() => updateLayout({ showTrendChart: !layout.showTrendChart })} />
+                    Chart tren
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 700, color: S.text }}>
+                    <input type="checkbox" checked={layout.showRankingTable} onChange={() => updateLayout({ showRankingTable: !layout.showRankingTable })} />
+                    Tabel ranking
+                  </label>
+                </div>
+              </div>
+              <div style={{ marginTop: 12, fontSize: 12, color: S.sub }}>
+                Preview target aktif: {formatSettingValue(targetFormula.dailyTarget)} / {formatSettingValue(targetFormula.monthlyTarget)} · mode {targetFormula.achievementMode === 'daily_prorated' ? 'prorated' : 'langsung'}
+              </div>
+            </div>
+
             {/* Login Tracker */}
-            <div style={{ padding: '22px 24px', background: '#fff', borderRadius: 18, border: `1.5px solid ${S.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+            <div style={{ padding: '22px 24px', background: '#fff', borderRadius: `${cardRadius}px`, border: `1.5px solid ${S.border}`, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: S.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Login Tracker</div>
               <div style={{ fontSize: 12, color: S.sub, marginBottom: 14 }}>Catat NIK, nama, dan tanggal login karyawan ke Google Sheets via Apps Script.</div>
               <div style={{ display: 'flex', gap: 8 }}>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { DataProvider } from './context/DataContext'
+import { AdminSettingsProvider } from './context/AdminSettingsContext'
 import { useAtlasData } from './context/useAtlasData'
 import LoginPage from './components/LoginPage'
 import MenuPage from './components/MenuPage'
@@ -41,7 +42,9 @@ function AppInner() {
 export default function App() {
   return (
     <DataProvider>
-      <AppInner />
+      <AdminSettingsProvider>
+        <AppInner />
+      </AdminSettingsProvider>
     </DataProvider>
   )
 }

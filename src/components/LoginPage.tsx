@@ -50,7 +50,8 @@ export default function LoginPage({ onLogin }: Props) {
     const match = freshUsers.find(u => normNik(u.nik) === inputNik)
     console.warn('[LOGIN] Match:', match ? `NIK="${match.nik}" pw="${match.password}"` : 'TIDAK DITEMUKAN')
     if (match) console.warn('[LOGIN] pw check:', JSON.stringify(match.password), '===', JSON.stringify(password), '→', match.password === password)
-    const user = match && match.password === password ? match : undefined
+    const normPw = (s: string) => s.trim().toLowerCase()
+    const user = match && normPw(match.password) === normPw(password) ? match : undefined
     if (user) { trackLogin(user.nik, user.nama).catch(() => {}); onLogin(user) } else {
       setError('NIK atau password salah. Silakan coba lagi.')
       setLoading(false)

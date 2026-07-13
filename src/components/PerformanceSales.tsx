@@ -4,6 +4,7 @@ import azkoLogo from '../imports/logo-azko_ratio-16x9__1_.jpg'
 import { formatRupiah, formatRupiahFull, type PerformanceData, type KPIItem, type User } from '../data/mockData'
 import { useAtlasData } from '../context/useAtlasData'
 import { useMobile } from '../hooks/useMobile'
+import { useAdminSettings } from '../context/AdminSettingsContext'
 import YTDPage, { AzkoMascot } from './YTDPage'
 
 type Period = 'today' | 'mtd' | 'fullmonth' | 'ytd'
@@ -122,12 +123,23 @@ function RankingRow({ row, i, isMobile }: { row: PerformanceData['ranking'][0]; 
 
 export default function PerformanceSales({ user, onBack }: Props) {
   const { todayPerf, mtdPerf, loading, error } = useAtlasData()
+  const { settings } = useAdminSettings()
   const [period, setPeriod] = useState<Period>('today')
   const isMobile = useMobile()
+  const targetFormula = settings.targetFormula
+  const layout = settings.layout
+  const primaryColor = layout.primaryColor || '#D93119'
+  const accentColor = layout.accentColor || '#2563eb'
+  const cardRadius = layout.cardRadius || 18
+
+  const monthlyTarget = targetFormula.monthlyTarget > 0
+    ? targetFormula.monthlyTarget * (targetFormula.monthlyMultiplier || 1)
+    : mtdPerf.target
+  const todayTarget = targetFormula.dailyTarget > 0 ? targetFormula.dailyTarget : todayPerf.target
 
   // Full Month: sama actual/trend dengan MTD, tapi achievement vs target penuh
-  const fullMonthAch = mtdPerf.target > 0
-    ? parseFloat(((mtdPerf.actual / mtdPerf.target) * 100).toFixed(1))
+  const fullMonthAch = monthlyTarget > 0
+    ? parseFloat(((mtdPerf.actual / monthlyTarget) * 100).toFixed(1))
     : 0
   // Scale factor: MTD prorated → full month target
   const fmScale = (mtdPerf.targetMTD && mtdPerf.targetMTD > 0)
@@ -151,15 +163,26 @@ export default function PerformanceSales({ user, onBack }: Props) {
   const fullMonthData: PerformanceData = {
     ...mtdPerf,
     achievement: fullMonthAch,
-    target: mtdPerf.target,
-    targetMTD: mtdPerf.targetMTD,
+    target: monthlyTarget,
+    targetMTD: monthlyTarget,
     kpis: fullMonthKPIs,
     ranking: fullMonthRanking,
   }
 
-  const data = period === 'today' ? todayPerf : period === 'mtd' ? mtdPerf : fullMonthData
+  const todayData: PerformanceData = {
+    ...todayPerf,
+    target: todayTarget,
+    achievement: todayTarget > 0 ? parseFloat(((todayPerf.actual / todayTarget) * 100).toFixed(1)) : 0,
+  }
+  const mtdData: PerformanceData = {
+    ...mtdPerf,
+    target: monthlyTarget,
+    achievement: monthlyTarget > 0 ? parseFloat(((mtdPerf.actual / monthlyTarget) * 100).toFixed(1)) : 0,
+  }
+
+  const data = period === 'today' ? todayData : period === 'mtd' ? mtdData : fullMonthData
   const trend = data.dailyTrend ?? data.monthlyTrend ?? []
-  const mainColor = ac(data.achievement)
+  const mainColor = data.achievement >= 100 ? primaryColor : data.achievement >= 80 ? accentColor : '#f59e0b'
   const px = isMobile ? '16px' : '32px'
 
   return (
@@ -183,9 +206,9 @@ export default function PerformanceSales({ user, onBack }: Props) {
               <button key={p.key} onClick={() => setPeriod(p.key)} style={{
                 padding: isMobile ? '6px 12px' : '7px 16px', borderRadius: 7, border: 'none', cursor: 'pointer',
                 fontWeight: 700, fontSize: isMobile ? 12 : 13, transition: 'all 0.18s',
-                background: period === p.key ? '#D93119' : 'transparent',
+                background: period === p.key ? primaryColor : 'transparent',
                 color: period === p.key ? '#fff' : S.muted,
-                boxShadow: period === p.key ? '0 2px 8px rgba(217,49,25,0.35)' : 'none',
+                boxShadow: period === p.key ? `0 2px 8px ${primaryColor}35` : 'none',
               }}>{isMobile ? p.labelMobile : p.label}</button>
             ))}
           </div>
@@ -206,7 +229,7 @@ export default function PerformanceSales({ user, onBack }: Props) {
 
 
         {/* Achievement card */}
-        <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 18, padding: isMobile ? '16px' : '28px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', position: 'relative' }}>
+        <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: `${cardRadius}px`, padding: isMobile ? '16px' : '28px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', position: 'relative' }}>
           {/* Maskot kecil — hiasan kanan atas (desktop only) */}
           {!isMobile && (
             <div style={{ position: 'absolute', top: 10, right: 18, width: 52, opacity: 0.88, pointerEvents: 'none' }}>
@@ -320,7 +343,7 @@ export default function PerformanceSales({ user, onBack }: Props) {
         </div>
 
         {/* Chart */}
-        <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 18, padding: isMobile ? '16px' : '28px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+        <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: `${cardRadius}px`, padding: isMobile ? '16px' : '28px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
           <div style={{ color: S.muted, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 16 }}>
             {period === 'today' ? 'Trend Harian' : period === 'mtd' ? 'Trend MTD Harian' : 'Trend Bulanan'}
           </div>
@@ -346,7 +369,7 @@ export default function PerformanceSales({ user, onBack }: Props) {
 
         {/* Ranking — hanya NIK terdaftar di USERS */}
         {data.ranking.length > 0 && (
-          <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 18, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+          <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: `${cardRadius}px`, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
             <div style={{ padding: '14px 16px', borderBottom: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 16 }}>🏆</span>
               <span style={{ color: S.text, fontWeight: 700, fontSize: 14 }}>Ranking — {PERIODS.find(p => p.key === period)?.label}</span>

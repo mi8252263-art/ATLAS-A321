@@ -28,6 +28,26 @@ export async function writeMenuConfigToSheet(key: string, val: boolean): Promise
   }
 }
 
+export async function writeAdminSettingsToSheet(payload: Record<string, unknown>): Promise<boolean> {
+  const url = getTrackerUrl().trim() || DEFAULT_TRACKER_URL
+  if (!url) return false
+  const qs = new URLSearchParams({ action: 'adminSettings', t: String(Date.now()) })
+  Object.entries(payload).forEach(([k, v]) => {
+    qs.append(k, typeof v === 'string' ? v : JSON.stringify(v))
+  })
+  const fullUrl = `${url}?${qs.toString()}`
+  console.warn('[ADMIN-SETTINGS] Sending to Apps Script:', fullUrl)
+  try {
+    await fetch(fullUrl, { method: 'GET', mode: 'no-cors', cache: 'no-store' })
+    console.warn('[ADMIN-SETTINGS] Request sent OK')
+    return true
+  } catch (err) {
+    console.error('[ADMIN-SETTINGS] Fetch failed:', err)
+    try { new Image().src = fullUrl } catch { /* silent */ }
+    return false
+  }
+}
+
 export async function trackLogin(nik: string, nama: string): Promise<void> {
   const url = getTrackerUrl().trim() || DEFAULT_TRACKER_URL
   if (!url) return
