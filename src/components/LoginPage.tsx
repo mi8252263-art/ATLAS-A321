@@ -78,10 +78,10 @@ export default function LoginPage({ onLogin }: Props) {
         alignItems: 'center', justifyContent: 'center', flexDirection: 'column',
         padding: 48, gap: 24,
       }} className="login-left">
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 48, fontWeight: 900, color: '#fff', letterSpacing: '-0.03em', marginBottom: 8 }}>ATLAS</div>
+          <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 48, fontWeight: 900, color: '#fff', letterSpacing: '-0.03em', marginBottom: 8 }}>ATLAS A321</div>
           <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)', maxWidth: 280, lineHeight: 1.6 }}>
-            Sales Performance Dashboard<br/>PT Azko Indonesia
+            Sales Performance Dashboard<br/>A321
           </div>
         </div>
       </div>
@@ -104,8 +104,8 @@ export default function LoginPage({ onLogin }: Props) {
               boxShadow: '0 4px 14px rgba(217,49,25,0.3)',
             }}/>
             <div>
-              <div style={{ color: '#1e293b', fontWeight: 800, fontSize: 17, letterSpacing: '0.05em' }}>ATLAS</div>
-              <div style={{ color: '#94a3b8', fontSize: 12 }}>Sales Performance · Azko</div>
+              <div style={{ color: '#1e293b', fontWeight: 800, fontSize: 17, letterSpacing: '0.05em' }}>ATLAS A321</div>
+                <div style={{ color: '#94a3b8', fontSize: 12 }}>Sales Performance · A321</div>
             </div>
           </div>
 
@@ -178,7 +178,7 @@ export default function LoginPage({ onLogin }: Props) {
           </form>
 
           <div style={{ marginTop: 24, textAlign: 'center', color: '#cbd5e1', fontSize: 12 }}>
-            © 2026 ATLAS · Sales Performance Dashboard
+            © 2026 ATLAS A321 · Sales Performance Dashboard
           </div>
         </div>
       </div>
