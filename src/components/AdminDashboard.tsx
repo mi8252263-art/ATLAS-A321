@@ -7,6 +7,7 @@ import { fetchAllYTD, type YTDEmployee } from '../services/rawDataApi'
 import { getTrackerUrl, setTrackerUrl, writeMenuConfigToSheet } from '../services/loginTracker'
 import { getMenuSettings, setMenuSetting } from './MenuPage'
 import { useAdminSettings } from '../context/AdminSettingsContext'
+import ColumnMappingPanel from './ColumnMappingPanel'
 import {
   AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -95,10 +96,22 @@ export default function AdminDashboard({ user, onLogout }: Props) {
   const [menuCfg, setMenuCfg] = useState(getMenuSettings)
   const isMobile = useMobile()
 
+  // Declare these early to avoid temporal dead zone issues
+  const targetFormula = settings.targetFormula
+  const layout = settings.layout
+
   useEffect(() => {
     setYtdLoading(true)
     fetchAllYTD().then(d => { setYtdAll(d); setYtdLoading(false) })
   }, [])
+
+  useEffect(() => {
+    const handleMappingsChanged = () => {
+      reload(user.nik)
+    }
+    window.addEventListener('atlas-column-mappings-changed', handleMappingsChanged)
+    return () => window.removeEventListener('atlas-column-mappings-changed', handleMappingsChanged)
+  }, [reload, user.nik])
 
   // Full Month: pakai ranking MTD tapi achievement dihitung vs full month target
   // Scale factor: prorated MTD target → full month target
@@ -152,8 +165,6 @@ export default function AdminDashboard({ user, onLogout }: Props) {
   const sortedYTD   = [...ytdValid].sort((a, b) => b.ytdSalesPct - a.ytdSalesPct)
   const zoneOrder   = ['hijau', 'biru', 'kuning', 'oranye', 'pink', 'merah']
 
-  const targetFormula = settings.targetFormula
-  const layout = settings.layout
   const primaryColor = layout.primaryColor || S.red
   const accentColor = layout.accentColor || '#2563eb'
   const cardRadius = layout.cardRadius || 18
@@ -716,6 +727,9 @@ export default function AdminDashboard({ user, onLogout }: Props) {
                 </div>
               </div>
             </div>
+
+            {/* Column Mapping Configuration */}
+            <ColumnMappingPanel />
           </div>
         )}
 

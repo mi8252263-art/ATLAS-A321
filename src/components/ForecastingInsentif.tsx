@@ -1,60 +1,289 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import azkoLogo from '../imports/logo-azko_ratio-16x9__1_.jpg'
-import { INSENTIF_SUMMARY, formatRupiahFull, type User } from '../data/mockData'
+import { formatRupiahFull, type User } from '../data/mockData'
+import { parseIncentiveSheets } from '../services/incentiveParser'
 
 interface Props { user: User; onBack: () => void }
 
 const S = { bg: '#f0f4ff', card: '#fff', border: '#e8edf8', muted: '#94a3b8', text: '#1e293b', sub: '#64748b' }
 
-type SubPage = 'bersyarat' | 'tanpa-syarat'
+type SubPage = 'bersyarat' | 'tanpa_syarat' | 'sku'
 
-// ─── Placeholder tier data ───────────────────────────────────────────────────
+type SummaryType = SubPage
 
-const TIERS_BERSYARAT = [
-  { id: 'toko-95',  label: 'Insentif Toko 95%',  desc: 'Pencapaian toko 90% – 94.99%', icon: '🏪', color: '#f59e0b', light: '#fffbeb' },
-  { id: 'toko-100', label: 'Insentif Toko 100%', desc: 'Pencapaian toko 95% – 99.99%', icon: '🏬', color: '#3b82f6', light: '#eff6ff' },
-  { id: 'toko-105', label: 'Insentif Toko 105%', desc: 'Pencapaian toko 100% – 104.99%', icon: '🌟', color: '#7c3aed', light: '#f5f3ff' },
-  { id: 'toko-110', label: 'Insentif Toko 110%', desc: 'Pencapaian toko ≥ 105%', icon: '🚀', color: '#059669', light: '#f0fdf9' },
-]
+interface IncentiveSummaryItem {
+  name: string
+  type: SummaryType
+  achieved: number
+  forecast: number
+}
 
-const TIERS_TANPA_SYARAT = [
-  { id: 'produk-1', label: 'Insentif Produk', desc: 'Program insentif berbasis produk terpilih', icon: '📦', color: '#D93119', light: '#fff5f3' },
-]
+const SHEET_NAMES = {
+  conditional: 'INSENTIF BERSYARAT',
+  unconditional: 'INSENTIF TANPA SYARAT',
+  sku: 'SKU INSENTIF',
+}
 
-// ─── Sub-page components ─────────────────────────────────────────────────────
+function useIncentiveData() {
+  const [data, setData] = useState<ReturnType<typeof parseIncentiveSheets> | null>(null)
+  const [loading, setLoading] = useState(true)
 
-function TierCard({ tier }: { tier: typeof TIERS_BERSYARAT[0] }) {
+  useEffect(() => {
+    let cancelled = false
+    const fetchData = async () => {
+      try {
+        const sheetIds = Object.values(SHEET_NAMES)
+        const sheets = await Promise.all(sheetIds.map(async sheet => {
+          const res = await fetch(`https://docs.google.com/spreadsheets/d/1mNGKDPFNnF1Ca0CtNzyriwTE8zjuwdJei0RafXxna38/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheet)}&_t=${Date.now()}`)
+          const text = await res.text()
+          if (!res.ok || text.trimStart().startsWith('<!')) return []
+          return text.split('\n').filter(Boolean).map(line => {
+            const cells: string[] = []
+            let inQuote = false
+            let cell = ''
+            for (let i = 0; i < line.length; i++) {
+              const c = line[i]
+              if (c === '"') {
+                if (inQuote && line[i + 1] === '"') { cell += '"'; i++ }
+                else { inQuote = !inQuote }
+              } else if (c === ',' && !inQuote) {
+                cells.push(cell)
+                cell = ''
+              } else {
+                cell += c
+              }
+            }
+            cells.push(cell)
+            return cells
+          })
+        }))
+
+        const parsed = parseIncentiveSheets({
+          [SHEET_NAMES.conditional]: sheets[0] ?? [],
+          [SHEET_NAMES.unconditional]: sheets[1] ?? [],
+          [SHEET_NAMES.sku]: sheets[2] ?? [],
+        })
+        if (!cancelled) setData(parsed)
+      } catch (error) {
+        console.warn('[INSENTIF] Error loading spreadsheet data:', error)
+        if (!cancelled) setData(parseIncentiveSheets({}))
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void fetchData()
+    return () => { cancelled = true }
+  }, [])
+
+  return { data, loading }
+}
+
+function normalizeNik(value: string) {
+  return (value ?? '').trim().replace(/\D/g, '').replace(/^0+/, '')
+}
+
+function normalizeName(value: string) {
+  return (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function isNumericString(value: string) {
+  return /^\s*[-+]?\d[\d.,\s]*$/.test(value)
+}
+
+function formatDisplayNik(value: string) {
+  const raw = (value ?? '').trim()
+  const match = raw.match(/\d+/)
+  return match ? match[0] : raw
+}
+
+function isStatusFulfilled(status: string) {
+  const normalized = (status || '').toLowerCase()
+  return normalized.includes('terpenuhi') && !normalized.includes('belum')
+}
+
+function filterUserRows<T extends { nik?: string; nama?: string }>(rows: T[] | undefined, userNik: string, userName: string): T[] {
+  const normalizedUserNik = normalizeNik(userNik)
+  const normalizedUserName = normalizeName(userName)
+  if (!normalizedUserNik && !normalizedUserName) return rows ?? []
+
+  return (rows ?? []).filter(row => {
+    const rowNik = normalizeNik(row.nik ?? '')
+    const rowName = normalizeName(row.nama ?? '')
+
+    const cleanNik = rowNik.split(' ').find(part => isNumericString(part)) ?? rowNik
+    const cleanUserNik = normalizedUserNik.split(' ').find(part => isNumericString(part)) ?? normalizedUserNik
+
+    const nikMatches = cleanNik && cleanUserNik && (cleanNik === cleanUserNik || cleanNik.endsWith(cleanUserNik) || cleanUserNik.endsWith(cleanNik))
+    const nameMatches = normalizedUserName && (rowName === normalizedUserName || rowName.includes(normalizedUserName) || normalizedUserName.includes(rowName))
+    return Boolean(nikMatches || nameMatches)
+  })
+}
+
+function ConditionalRowCard({ row, userNik }: { row: NonNullable<ReturnType<typeof parseIncentiveSheets>['conditional']['rows']>[number]; userNik: string }) {
+  const achievedValue = row.items.reduce((sum, item) => {
+    return sum + (isStatusFulfilled(item.status || '') ? item.amount : 0)
+  }, 0)
+  const potentialValue = row.items.reduce((sum, item) => {
+    return sum + (!isStatusFulfilled(item.status || '') && item.amount ? item.amount : 0)
+  }, 0)
+
+  const displayNik = formatDisplayNik(userNik || row.nik || '')
+
   return (
-    <div style={{
-      background: S.card, border: `1.5px solid ${S.border}`, borderRadius: 18,
-      padding: '22px 24px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-      display: 'flex', alignItems: 'center', gap: 18, transition: 'all 0.18s', cursor: 'default',
-    }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = tier.color; (e.currentTarget as HTMLElement).style.boxShadow = `0 6px 24px ${tier.color}20` }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = S.border; (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)' }}
-    >
-      <div style={{ width: 54, height: 54, borderRadius: 14, background: tier.light, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, flexShrink: 0 }}>
-        {tier.icon}
+    <div style={{ background: S.card, border: `1.5px solid ${S.border}`, borderRadius: 16, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ color: '#0f172a', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Insentif Bersyarat</div>
+          <div style={{ color: S.text, fontWeight: 800, fontSize: 15 }}>{row.nama || row.nik}</div>
+          <div style={{ color: S.muted, fontSize: 12 }}>NIK {displayNik || 'belum tersedia'}</div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ color: '#D93119', fontWeight: 800, fontSize: 14 }}>{formatRupiahFull(achievedValue)}</div>
+          <div style={{ color: S.muted, fontSize: 11 }}>Cair</div>
+        </div>
       </div>
-      <div style={{ flex: 1 }}>
-        <p style={{ color: S.text, fontWeight: 800, fontSize: 15, marginBottom: 4 }}>{tier.label}</p>
-        <p style={{ color: S.muted, fontSize: 13 }}>{tier.desc}</p>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+        {potentialValue > 0 ? (
+          <span style={{ background: '#f0fdf9', color: '#059669', border: '1px solid #bbf7d0', borderRadius: 999, padding: '4px 10px', fontSize: 11, fontWeight: 700 }}>Potensial {formatRupiahFull(potentialValue)}</span>
+        ) : null}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-        <span style={{ background: tier.light, color: tier.color, border: `1px solid ${tier.color}30`, fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 8, letterSpacing: '0.04em' }}>
-          DATA BELUM TERSEDIA
-        </span>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginTop: 10 }}>
+        {row.items.map(item => (
+          <div key={`${item.label}-${item.amount}-${item.status}`} style={{ background: '#f8fafc', borderRadius: 18, padding: '16px', minHeight: 110, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 10 }}>
+            <div>
+              <div style={{ color: S.muted, fontSize: 11, marginBottom: 8, fontWeight: 700 }}>{item.label || 'Insentif'}</div>
+              <div style={{ color: S.text, fontSize: 18, fontWeight: 800 }}>{formatRupiahFull(item.amount)}</div>
+            </div>
+            <div style={{ color: item.status ? '#334155' : '#64748b', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>{item.status || 'Belum ada status'}</div>
+          </div>
+        ))}
       </div>
     </div>
   )
 }
 
-function SubPageView({ type, user, onBack: goBack }: { type: SubPage; user: User; onBack: () => void }) {
+function UnconditionalRowCard({ row, userNik }: { row: NonNullable<ReturnType<typeof parseIncentiveSheets>['unconditional']['rows']>[number]; userNik: string }) {
+  const categoryLabel = row.category && !/^\d+$/.test(row.category) ? row.category : ''
+  const displayNik = formatDisplayNik(userNik || row.nik || '')
+
+  return (
+    <div style={{ background: S.card, border: `1.5px solid ${S.border}`, borderRadius: 16, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          {categoryLabel ? (
+            <>
+              <div style={{ color: S.text, fontWeight: 800, fontSize: 15 }}>{categoryLabel}</div>
+              <div style={{ color: S.muted, fontSize: 12, marginTop: 6 }}>{row.nama ? `${row.nama} • ` : ''}NIK {displayNik || 'belum tersedia'}</div>
+            </>
+          ) : (
+            <>
+              <div style={{ color: S.text, fontWeight: 800, fontSize: 15 }}>{row.nama || row.nik}</div>
+              <div style={{ color: S.muted, fontSize: 12 }}>NIK {displayNik || 'belum tersedia'}</div>
+            </>
+          )}
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ color: '#7c3aed', fontWeight: 800, fontSize: 14 }}>{formatRupiahFull(row.value)}</div>
+          <div style={{ color: S.muted, fontSize: 11 }}>Pasti diperoleh</div>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+        {row.items.map(item => (
+          <div key={`${item.label}-${item.amount}`} style={{ background: '#f8fafc', borderRadius: 18, padding: '16px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 10 }}>
+            <div>
+              <div style={{ color: S.muted, fontSize: 11, marginBottom: 8, fontWeight: 700 }}>{item.label || 'Insentif'}</div>
+              <div style={{ color: S.text, fontSize: 18, fontWeight: 800 }}>{formatRupiahFull(item.amount)}</div>
+            </div>
+            <div style={{ color: '#64748b', fontSize: 11, fontWeight: 700, textTransform: 'uppercase' }}>Pasti diperoleh</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SkuRowCard({ row }: { row: NonNullable<ReturnType<typeof parseIncentiveSheets>['sku']['rows']>[number] }) {
+  return (
+    <div style={{ background: S.card, border: `1.5px solid ${S.border}`, borderRadius: 16, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start' }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ color: S.text, fontWeight: 800, fontSize: 15, marginBottom: 4 }}>{row.name || row.sku}</div>
+          <div style={{ color: S.muted, fontSize: 12 }}>SKU: {row.sku || '—'}</div>
+        </div>
+        {row.imageUrl ? (
+          <img src={row.imageUrl} alt={row.name || row.sku} style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 16, border: `1px solid ${S.border}`, background: '#f8fafc' }} />
+        ) : null}
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ color: S.sub, fontSize: 13, lineHeight: 1.5 }}>{row.requirement || '—'}</div>
+        {row.incentiveValue > 0 ? (
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ color: '#7c3aed', fontWeight: 800, fontSize: 16 }}>{formatRupiahFull(row.incentiveValue)}</div>
+            <div style={{ color: S.muted, fontSize: 11 }}>{row.per ? `Per ${row.per}` : 'Per qty'}</div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function SummaryCard({ item, onClick }: { item: IncentiveSummaryItem; onClick: () => void }) {
+  const color = item.type === 'bersyarat' ? '#dc2626' : item.type === 'sku' ? '#059669' : '#4338ca'
+  const light = item.type === 'bersyarat' ? '#fef2f2' : item.type === 'sku' ? '#ecfdf5' : '#eef2ff'
+  const border = item.type === 'bersyarat' ? '#fecaca' : item.type === 'sku' ? '#bbf7d0' : '#c7d2fe'
+  const isSku = item.type === 'sku'
+
+  const icon = isSku ? '📦' : item.type === 'bersyarat' ? '🔥' : '✨'
+
+  return (
+    <button onClick={onClick} style={{ background: light, border: `1px solid ${border}`, borderRadius: 22, padding: '22px 24px', boxShadow: '0 10px 24px rgba(15,23,42,0.05)', transition: 'transform 0.18s, border-color 0.18s', cursor: 'pointer', textAlign: 'left', width: '100%' }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.borderColor = color }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.borderColor = border }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, color: S.text, fontWeight: 800, fontSize: 15 }}>
+            <span style={{ width: 28, height: 28, borderRadius: 999, background: 'rgba(255,255,255,0.4)', display: 'grid', placeItems: 'center', fontSize: 14 }}>{icon}</span>
+            <span>{item.name}</span>
+          </div>
+          <div style={{ color: S.muted, fontSize: 12, marginTop: 4 }}>{isSku ? 'Detail SKU' : 'Ringkasan insentif'}</div>
+        </div>
+        <span style={{ color: S.muted, fontSize: 20 }}>›</span>
+      </div>
+      <div style={{ color: S.text, fontSize: 20, fontWeight: 800 }}>{formatRupiahFull(item.achieved)}</div>
+      {isSku ? <div style={{ marginTop: 12, color: color, fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Lihat detail SKU</div> : null}
+    </button>
+  )
+}
+
+function SubPageView({ type, data, user, onBack: goBack }: { type: SubPage; data: ReturnType<typeof parseIncentiveSheets> | null; user: User; onBack: () => void }) {
+  const [skuQuery, setSkuQuery] = useState('')
+  const [skuSort, setSkuSort] = useState<'sku' | 'name'>('sku')
+  const [skuOrder, setSkuOrder] = useState<'asc' | 'desc'>('asc')
+
   const isBersyarat = type === 'bersyarat'
-  const color       = isBersyarat ? '#D93119' : '#7c3aed'
-  const title       = isBersyarat ? 'Insentif Bersyarat' : 'Insentif Tanpa Syarat'
-  const subtitle    = isBersyarat ? 'Tier insentif berdasarkan pencapaian toko' : 'Insentif berdasarkan produk terpilih'
-  const tiers       = isBersyarat ? TIERS_BERSYARAT : TIERS_TANPA_SYARAT
+  const isSku = type === 'sku'
+  const color = isBersyarat ? '#D93119' : isSku ? '#059669' : '#7c3aed'
+  const title = isBersyarat ? 'Insentif Bersyarat' : isSku ? 'SKU Insentif' : 'Insentif Tanpa Syarat'
+  const subtitle = isBersyarat ? 'Data individu dari sheet INSENTIF BERSYARAT' : isSku ? '' : 'Data individu dari sheet INSENTIF TANPA SYARAT'
+
+  const rows = isBersyarat ? filterUserRows(data?.conditional.rows, user.nik, user.nama) : isSku ? data?.sku.rows : filterUserRows(data?.unconditional.rows, user.nik, user.nama)
+
+  const skuRows = isSku ? (data?.sku.rows ?? []) : []
+  const filteredSkuRows = skuRows.filter(row => {
+    const query = skuQuery.trim().toLowerCase()
+    if (!query) return true
+    return row.sku.toLowerCase().includes(query) || row.name.toLowerCase().includes(query)
+  })
+  const sortedSkuRows = [...filteredSkuRows].sort((a, b) => {
+    const left = (a[skuSort] || '').toLowerCase()
+    const right = (b[skuSort] || '').toLowerCase()
+    if (left === right) return 0
+    return skuOrder === 'asc' ? (left < right ? -1 : 1) : (left > right ? -1 : 1)
+  })
 
   return (
     <div style={{ minHeight: '100vh', background: S.bg }}>
@@ -71,67 +300,91 @@ function SubPageView({ type, user, onBack: goBack }: { type: SubPage; user: User
         <span style={{ color: S.muted, fontSize: 12, marginLeft: 'auto' }}>{user.nama}</span>
       </header>
 
-      <main style={{ maxWidth: 800, margin: '0 auto', padding: '32px 24px' }}>
-        <div style={{ marginBottom: 28 }}>
+      <main style={{ maxWidth: 900, margin: '0 auto', padding: '32px 24px' }}>
+        <div style={{ marginBottom: 20 }}>
           <h2 style={{ color: S.text, fontSize: 22, fontWeight: 800, letterSpacing: '-0.02em', marginBottom: 6 }}>{title}</h2>
           <p style={{ color: S.muted, fontSize: 14 }}>{subtitle}</p>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {tiers.map(tier => <TierCard key={tier.id} tier={tier} />)}
-        </div>
+        {isSku ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 18, alignItems: 'center' }}>
+            <input
+              value={skuQuery}
+              onChange={event => setSkuQuery(event.target.value)}
+              placeholder="Cari SKU atau nama produk"
+              style={{ flex: '1 1 280px', minWidth: 240, border: `1px solid ${S.border}`, borderRadius: 14, padding: '12px 14px', fontSize: 14, color: S.text, background: S.card }}
+            />
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => setSkuSort('sku')} style={{ borderRadius: 14, border: `1px solid ${skuSort === 'sku' ? color : S.border}`, background: skuSort === 'sku' ? color : S.card, color: skuSort === 'sku' ? '#fff' : S.text, padding: '10px 14px', cursor: 'pointer' }}>Sort SKU</button>
+              <button type="button" onClick={() => setSkuSort('name')} style={{ borderRadius: 14, border: `1px solid ${skuSort === 'name' ? color : S.border}`, background: skuSort === 'name' ? color : S.card, color: skuSort === 'name' ? '#fff' : S.text, padding: '10px 14px', cursor: 'pointer' }}>Sort Nama</button>
+              <button type="button" onClick={() => setSkuOrder(prev => prev === 'asc' ? 'desc' : 'asc')} style={{ borderRadius: 14, border: `1px solid ${S.border}`, background: S.card, color: S.text, padding: '10px 14px', cursor: 'pointer' }}>{skuOrder === 'asc' ? 'A→Z' : 'Z→A'}</button>
+            </div>
+          </div>
+        ) : null}
 
-        <div style={{ marginTop: 24, padding: '16px 20px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, color: '#92400e', fontSize: 13 }}>
-          ⚠ Data insentif sedang disiapkan. Nilai akan muncul setelah sheet diisi.
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {!rows?.length ? (
+            <div style={{ padding: '16px 20px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, color: '#92400e', fontSize: 13 }}>
+              Data belum tersedia. Pastikan sheet memiliki data dan nama sheet sesuai.
+            </div>
+          ) : (
+            (isBersyarat ? rows : isSku ? sortedSkuRows : rows).map((row, index) => {
+              if (isBersyarat) return <ConditionalRowCard key={`${(row as any).nik}-${index}`} row={row as any} userNik={user.nik} />
+              if (isSku) return <SkuRowCard key={`${(row as any).sku}-${index}`} row={row as any} />
+              return <UnconditionalRowCard key={`${(row as any).nik}-${index}`} row={row as any} userNik={user.nik} />
+            })
+          )}
         </div>
       </main>
     </div>
   )
 }
 
-// ─── Summary card (clickable) ────────────────────────────────────────────────
-
-function SummaryCard({ item, onClick }: { item: typeof INSENTIF_SUMMARY[0]; onClick: () => void }) {
-  const isBersyarat = item.type === 'bersyarat'
-  const color = isBersyarat ? '#D93119' : '#7c3aed'
-  const light = isBersyarat ? '#fff5f3' : '#f5f3ff'
-  const pct   = Math.min(item.persen, 100)
-  return (
-    <button onClick={onClick} style={{ background: S.card, border: `1.5px solid ${S.border}`, borderRadius: 18, padding: '22px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)', transition: 'all 0.18s', cursor: 'pointer', textAlign: 'left', width: '100%' }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = color; (e.currentTarget as HTMLElement).style.boxShadow = `0 6px 24px ${color}20` }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = S.border; (e.currentTarget as HTMLElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)' }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 38, height: 38, borderRadius: 10, background: light, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>
-            {isBersyarat ? '⭐' : '✅'}
-          </div>
-          <span style={{ color: S.text, fontWeight: 700, fontSize: 14 }}>{item.nama}</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ color, fontWeight: 900, fontSize: 24, letterSpacing: '-0.02em' }}>{item.persen.toFixed(1)}%</span>
-          <span style={{ color: S.muted, fontSize: 18 }}>›</span>
-        </div>
-      </div>
-      <div style={{ height: 8, background: '#e8edf8', borderRadius: 4, marginBottom: 12, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 4, transition: 'width 1s ease' }}/>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
-        <span style={{ color: S.sub }}>Tercapai <b style={{ color: S.text }}>{formatRupiahFull(item.nilai_tercapai)}</b></span>
-        <span style={{ color: S.muted }}>Target {formatRupiahFull(item.nilai_target)}</span>
-      </div>
-    </button>
-  )
-}
-
 export default function ForecastingInsentif({ user, onBack }: Props) {
   const [subPage, setSubPage] = useState<SubPage | null>(null)
-  const totalTercapai = INSENTIF_SUMMARY.reduce((s, i) => s + i.nilai_tercapai, 0)
-  const totalTarget   = INSENTIF_SUMMARY.reduce((s, i) => s + i.nilai_target, 0)
-  const totalPct      = (totalTercapai / totalTarget) * 100
+  const { data, loading } = useIncentiveData()
+
+  const summary = useMemo<IncentiveSummaryItem[]>(() => {
+    if (!data) return []
+
+    const conditionalRows = filterUserRows(data.conditional.rows, user.nik, user.nama)
+    const unconditionalRows = filterUserRows(data.unconditional.rows, user.nik, user.nama)
+    const skuRows = data.sku.rows
+
+    const conditionalAchieved = conditionalRows.reduce((sum, row) => sum + row.items.filter(item => isStatusFulfilled(item.status || '')).reduce((subSum, item) => subSum + item.amount, 0), 0)
+    const conditionalPotential = conditionalRows.reduce((sum, row) => sum + row.items.filter(item => !isStatusFulfilled(item.status || '')).reduce((subSum, item) => subSum + item.amount, 0), 0)
+    const unconditionalAchieved = unconditionalRows.reduce((sum, row) => sum + row.value, 0)
+    const skuAchieved = skuRows.reduce((sum, row) => sum + row.incentiveValue, 0)
+    const skuForecast = 0
+
+    return [
+      {
+        name: 'Insentif Bersyarat',
+        type: 'bersyarat',
+        achieved: conditionalAchieved,
+        forecast: conditionalPotential,
+      },
+      {
+        name: 'Insentif Tanpa Syarat',
+        type: 'tanpa_syarat',
+        achieved: unconditionalAchieved,
+        forecast: 0,
+      },
+      {
+        name: 'SKU Insentif',
+        type: 'sku',
+        achieved: skuAchieved,
+        forecast: skuForecast,
+      },
+    ]
+  }, [data, user.nik, user.nama])
+
+  const totalPotential = summary.find(item => item.type === 'bersyarat')?.forecast ?? 0
+  const totalAchieved = summary.reduce((sum, item) => sum + item.achieved, 0)
+  const totalProjected = totalAchieved + totalPotential
 
   if (subPage) {
-    return <SubPageView type={subPage} user={user} onBack={() => setSubPage(null)} />
+    return <SubPageView type={subPage} data={data} user={user} onBack={() => setSubPage(null)} />
   }
 
   return (
@@ -150,50 +403,58 @@ export default function ForecastingInsentif({ user, onBack }: Props) {
       </header>
 
       <main style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* Total */}
-        <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 20, padding: '28px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 32, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-          <div style={{ position: 'relative', width: 120, height: 120, flexShrink: 0 }}>
-            <svg width="120" height="120" viewBox="0 0 120 120">
-              <circle cx="60" cy="60" r="50" fill="none" stroke="#e8edf8" strokeWidth="10"/>
-              <circle cx="60" cy="60" r="50" fill="none" stroke="#059669" strokeWidth="10"
-                strokeDasharray={2 * Math.PI * 50}
-                strokeDashoffset={2 * Math.PI * 50 * (1 - totalPct / 100)}
-                strokeLinecap="round" transform="rotate(-90 60 60)"
-                style={{ transition: 'stroke-dashoffset 1s ease', filter: 'drop-shadow(0 0 6px rgba(5,150,105,0.5))' }}/>
-            </svg>
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ color: '#059669', fontSize: 22, fontWeight: 900 }}>{totalPct.toFixed(0)}%</span>
-              <span style={{ color: S.muted, fontSize: 10 }}>Total</span>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.65fr 1fr', gap: 20, alignItems: 'stretch' }}>
+          <div style={{ position: 'relative', borderRadius: 28, overflow: 'hidden', background: 'linear-gradient(135deg, #4338ca 0%, #7c3aed 100%)', minHeight: 260, padding: '28px 30px', boxShadow: '0 20px 50px rgba(67, 56, 202, 0.18)', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 22 }}>
+            <div style={{ position: 'absolute', right: -40, top: -30, width: 140, height: 140, borderRadius: '50%', background: 'rgba(255, 255, 255, 0.14)' }} />
+            <div style={{ position: 'absolute', right: 20, bottom: -30, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255, 255, 255, 0.08)' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
+              <div>
+                <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.18em', marginBottom: 12 }}>Total Insentif Anda</div>
+                <div style={{ color: '#ffffff', fontSize: 36, fontWeight: 900, lineHeight: 1.05, maxWidth: 360 }}>{formatRupiahFull(totalProjected)}</div>
+              </div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.16)', borderRadius: 999, padding: '10px 14px', color: '#ffffff', fontSize: 12, fontWeight: 700 }}>
+                <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,255,255,0.24)', display: 'grid', placeItems: 'center' }}>👤</span>
+                NIK {user.nik}
+              </div>
+            </div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.12)', borderRadius: 999, padding: '12px 16px', color: 'rgba(255,255,255,0.92)', fontSize: 13, fontWeight: 600 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', fontSize: 14 }}>↗</span>
+              Total keseluruhan insentif
             </div>
           </div>
-          <div>
-            <h2 style={{ color: S.text, fontSize: 20, fontWeight: 800, marginBottom: 6 }}>Total Insentif Bulan Ini</h2>
-            <p style={{ color: S.muted, fontSize: 13, marginBottom: 20 }}>Gabungan semua kategori insentif aktif</p>
-            <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap' }}>
-              {[
-                { label: 'Tercapai', val: totalTercapai, c: '#059669' },
-                { label: 'Target',   val: totalTarget,   c: S.sub   },
-                { label: 'Sisa',     val: totalTarget - totalTercapai, c: '#f59e0b' },
-              ].map(r => (
-                <div key={r.label}>
-                  <div style={{ color: S.muted, fontSize: 11, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700 }}>{r.label}</div>
-                  <div style={{ color: r.c, fontSize: 18, fontWeight: 800 }}>{formatRupiahFull(r.val)}</div>
+          <div style={{ display: 'grid', gap: 20 }}>
+            <div style={{ borderRadius: 24, padding: '24px 22px', background: '#ecfdf5', border: '1px solid #bbf7d0', boxShadow: '0 12px 28px rgba(16, 185, 129, 0.12)', minHeight: 220, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#dcfce7', color: '#16a34a', display: 'grid', placeItems: 'center', fontSize: 18 }}>✓</div>
+                  <div style={{ color: '#15803d', fontSize: 13, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Insentif Cair</div>
                 </div>
-              ))}
+                <div style={{ color: '#0f172a', fontSize: 30, fontWeight: 900, marginBottom: 10 }}>{formatRupiahFull(totalAchieved)}</div>
+              </div>
+              <div style={{ color: '#475569', fontSize: 13, lineHeight: 1.65 }}>Insentif yang sudah memenuhi syarat dan siap dicairkan.</div>
+            </div>
+            <div style={{ borderRadius: 24, padding: '24px 22px', background: '#ffedd5', border: '1px solid #fed7aa', boxShadow: '0 12px 28px rgba(251, 146, 60, 0.12)', minHeight: 220, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#fff7ed', color: '#ea580c', display: 'grid', placeItems: 'center', fontSize: 18 }}>⏳</div>
+                  <div style={{ color: '#9a3412', fontSize: 13, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Potensial Insentif</div>
+                </div>
+                <div style={{ color: '#0f172a', fontSize: 30, fontWeight: 900, marginBottom: 10 }}>{formatRupiahFull(totalPotential)}</div>
+              </div>
+              <div style={{ color: '#6b4226', fontSize: 13, lineHeight: 1.65 }}>Insentif yang masih bersyarat dan belum terpenuhi.</div>
             </div>
           </div>
         </div>
 
-        {/* Summary cards — clickable to sub-pages */}
         <div>
           <div style={{ color: S.muted, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 12 }}>Ringkasan per Tipe Insentif</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-            {INSENTIF_SUMMARY.map(item => (
-              <SummaryCard
-                key={item.type}
-                item={item}
-                onClick={() => setSubPage(item.type === 'bersyarat' ? 'bersyarat' : 'tanpa-syarat')}
-              />
+            {loading ? (
+              <div style={{ gridColumn: '1 / -1', padding: '16px 20px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, color: '#92400e', fontSize: 13 }}>
+                Memuat data insentif dari sheet...
+              </div>
+            ) : summary.map(item => (
+              <SummaryCard key={item.type} item={item} onClick={() => setSubPage(item.type)} />
             ))}
           </div>
         </div>

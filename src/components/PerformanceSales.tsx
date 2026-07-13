@@ -26,11 +26,11 @@ function pctToZone(pct: number): string {
   return 'merah'
 }
 function ac(pct: number) {
-  if (pct >= 100) return '#2563eb'   // biru
-  if (pct >= 95)  return '#16a34a'   // hijau
-  if (pct >= 90)  return '#ca8a04'   // kuning
-  if (pct >= 80)  return '#db2777'   // pink
-  return '#dc2626'                    // merah
+  if (pct >= 100) return '#2563eb' // blue
+  if (pct >= 95)  return '#059669' // green
+  if (pct >= 90)  return '#f59e0b' // yellow
+  if (pct >= 80)  return '#ec4899' // pink
+  return '#D93119'                // red
 }
 function lightBg(pct: number) {
   if (pct >= 100) return '#eff6ff'
@@ -132,10 +132,16 @@ export default function PerformanceSales({ user, onBack }: Props) {
   const accentColor = layout.accentColor || '#2563eb'
   const cardRadius = layout.cardRadius || 18
 
-  const monthlyTarget = targetFormula.monthlyTarget > 0
-    ? targetFormula.monthlyTarget * (targetFormula.monthlyMultiplier || 1)
-    : mtdPerf.target
-  const todayTarget = targetFormula.dailyTarget > 0 ? targetFormula.dailyTarget : todayPerf.target
+  const monthlyTarget = mtdPerf.target > 0
+    ? mtdPerf.target
+    : targetFormula.monthlyTarget > 0
+      ? targetFormula.monthlyTarget * (targetFormula.monthlyMultiplier || 1)
+      : mtdPerf.target
+  const todayTarget = todayPerf.target > 0
+    ? todayPerf.target
+    : targetFormula.dailyTarget > 0
+      ? targetFormula.dailyTarget
+      : todayPerf.target
 
   // Full Month: sama actual/trend dengan MTD, tapi achievement vs target penuh
   const fullMonthAch = monthlyTarget > 0
@@ -174,15 +180,16 @@ export default function PerformanceSales({ user, onBack }: Props) {
     target: todayTarget,
     achievement: todayTarget > 0 ? parseFloat(((todayPerf.actual / todayTarget) * 100).toFixed(1)) : 0,
   }
+  const mtdTarget = mtdPerf.targetMTD > 0 ? mtdPerf.targetMTD : monthlyTarget
   const mtdData: PerformanceData = {
     ...mtdPerf,
-    target: monthlyTarget,
-    achievement: monthlyTarget > 0 ? parseFloat(((mtdPerf.actual / monthlyTarget) * 100).toFixed(1)) : 0,
+    target: mtdTarget,
+    achievement: mtdTarget > 0 ? parseFloat(((mtdPerf.actual / mtdTarget) * 100).toFixed(1)) : 0,
   }
 
   const data = period === 'today' ? todayData : period === 'mtd' ? mtdData : fullMonthData
   const trend = data.dailyTrend ?? data.monthlyTrend ?? []
-  const mainColor = data.achievement >= 100 ? primaryColor : data.achievement >= 80 ? accentColor : '#f59e0b'
+  const mainColor = ac(data.achievement)
   const px = isMobile ? '16px' : '32px'
 
   return (

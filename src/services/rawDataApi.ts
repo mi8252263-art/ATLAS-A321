@@ -7,6 +7,7 @@
 
 import type { PerformanceData, KPIItem } from '../data/mockData'
 import { YTD_PERFORMANCE } from '../data/mockData'
+import { getConfiguredColumnIndex } from './columnMappingService'
 
 const SHEET_ID = '1mNGKDPFNnF1Ca0CtNzyriwTE8zjuwdJei0RafXxna38'
 const DEFAULT_DAILY_TARGET = 5_000_000
@@ -173,10 +174,18 @@ export async function fetchRawTransactions(): Promise<{ txns: RawTxn[], debugRow
   let lastNama = ''
   const txns: RawTxn[] = []
 
+  const nikIdx = getConfiguredColumnIndex('COPAS S2', 'COPAS_S2_NIK', 0)
+  const namaIdx = getConfiguredColumnIndex('COPAS S2', 'COPAS_S2_NAMA', 1)
+  const tanggalIdx = getConfiguredColumnIndex('COPAS S2', 'COPAS_S2_TANGGAL', 2)
+  const receiptIdx = getConfiguredColumnIndex('COPAS S2', 'COPAS_S2_RECEIPT_NO', 3)
+  const artikelIdx = getConfiguredColumnIndex('COPAS S2', 'COPAS_S2_ARTIKEL', 4)
+  const qtyIdx = getConfiguredColumnIndex('COPAS S2', 'COPAS_S2_QTY', 7)
+  const totalValueIdx = getConfiguredColumnIndex('COPAS S2', 'COPAS_S2_TOTAL_VALUE', 11)
+
   for (const row of raw.slice(dataStart)) {
-    const nikVal  = c(row, 0)
-    const namaVal = c(row, 1)
-    const tgl     = c(row, 2)
+    const nikVal  = c(row, nikIdx)
+    const namaVal = c(row, namaIdx)
+    const tgl     = c(row, tanggalIdx)
 
     // Row NONAME = transaksi sistem/retur tanpa pemilik — reset fill-down agar tidak terpakai
     if (namaVal.toUpperCase() === 'NONAME') { lastNik = ''; lastNama = ''; continue }
@@ -189,7 +198,7 @@ export async function fetchRawTransactions(): Promise<{ txns: RawTxn[], debugRow
     if (!lastNik || !tgl) continue
 
     // Skip transaksi dengan nilai negatif (retur sistem, bukan transaksi penjualan)
-    const tv = numVal(c(row, 11))
+    const tv = numVal(c(row, totalValueIdx))
     if (tv < 0) continue
 
     txns.push({
@@ -197,9 +206,9 @@ export async function fetchRawTransactions(): Promise<{ txns: RawTxn[], debugRow
       nama:       lastNama,
       tanggal:    tgl,
       date:       null,
-      receiptNo:  c(row, 3),
-      artikel:    c(row, 4),
-      qty:        numVal(c(row, 7)),
+      receiptNo:  c(row, receiptIdx),
+      artikel:    c(row, artikelIdx),
+      qty:        numVal(c(row, qtyIdx)),
       totalValue: tv,
     })
   }
@@ -226,15 +235,24 @@ export async function fetchSettings(): Promise<KPISetting[]> {
   try {
     const rows = await fetchCSV('SETTING')
     if (rows.length < 2) return []
+
+    const sectionIdx = getConfiguredColumnIndex('SETTING', 'SETTING_SECTION', 0)
+    const namaIdx = getConfiguredColumnIndex('SETTING', 'SETTING_NAMA', 1)
+    const aktifIdx = getConfiguredColumnIndex('SETTING', 'SETTING_AKTIF', 2)
+    const targetTypeIdx = getConfiguredColumnIndex('SETTING', 'SETTING_TARGET_TYPE', 3)
+    const targetValueIdx = getConfiguredColumnIndex('SETTING', 'SETTING_TARGET_VALUE', 4)
+    const unitIdx = getConfiguredColumnIndex('SETTING', 'SETTING_UNIT', 5)
+    const keteranganIdx = getConfiguredColumnIndex('SETTING', 'SETTING_KETERANGAN', 6)
+
     return rows.slice(1)
       .map(row => ({
-        section: (c(row, 0).toUpperCase()) as 'KPI' | 'KATEGORI',
-        nama:         c(row, 1),
-        aktif:        c(row, 2).toUpperCase() !== 'FALSE',
-        targetType:   (c(row, 3).toLowerCase() || 'tetap') as KPISetting['targetType'],
-        targetValue:  parseFloat(c(row, 4).replace(',', '.')) || 0,
-        unit:         c(row, 5).toLowerCase(),
-        keterangan:   c(row, 6),
+        section: (c(row, sectionIdx).toUpperCase()) as 'KPI' | 'KATEGORI',
+        nama:         c(row, namaIdx),
+        aktif:        c(row, aktifIdx).toUpperCase() !== 'FALSE',
+        targetType:   (c(row, targetTypeIdx).toLowerCase() || 'tetap') as KPISetting['targetType'],
+        targetValue:  parseFloat(c(row, targetValueIdx).replace(',', '.')) || 0,
+        unit:         c(row, unitIdx).toLowerCase(),
+        keterangan:   c(row, keteranganIdx),
       }))
       .filter(s => (s.section === 'KPI' || s.section === 'KATEGORI') && s.nama)
   } catch {
@@ -249,10 +267,13 @@ export async function fetchMenuConfig(): Promise<Record<string, boolean>> {
   try {
     const rows = await fetchCSV('SETTING')
     const cfg: Record<string, boolean> = {}
+    const sectionIdx = getConfiguredColumnIndex('SETTING', 'SETTING_SECTION', 0)
+    const namaIdx = getConfiguredColumnIndex('SETTING', 'SETTING_NAMA', 1)
+    const aktifIdx = getConfiguredColumnIndex('SETTING', 'SETTING_AKTIF', 2)
     for (const row of rows) {
-      const section = c(row, 0).toUpperCase().trim()
-      const key     = c(row, 1).toUpperCase().trim()
-      const val     = c(row, 2).toUpperCase().trim()
+      const section = c(row, sectionIdx).toUpperCase().trim()
+      const key     = c(row, namaIdx).toUpperCase().trim()
+      const val     = c(row, aktifIdx).toUpperCase().trim()
       if (section === 'CONFIG' && key.startsWith('MENU_')) {
         // MENU_FORECASTING → 'forecasting'
         cfg[key.replace('MENU_', '').toLowerCase()] = val !== 'FALSE'
@@ -265,13 +286,14 @@ export async function fetchMenuConfig(): Promise<Record<string, boolean>> {
 }
 
 // ─── Fetch TARGET ─────────────────────────────────────────────────────────────
-// Sheet TARGET: A=NIK, B=NAMA, C=TARGET SALES DAILY, D=TARGET SALES BULAN
+// Sheet TARGET: A=NIK, B=NAMA, C=TARGET SALES DAILY, D=TARGET SALES BULAN, E=TARGET TRANSAKSI DAILY, F=TARGET TRANSAKSI MONTHLY, G=TARGET BASKET SIZE DAILY, H=TARGET BASKET SIZE MONTHLY
 
 export interface TargetData {
   daily: number; monthly: number; nama?: string; jobTitle?: string
-  targetTrxDaily?:   number  // kolom F — target transaksi harian
-  targetTrxMonthly?: number  // kolom G — target transaksi bulanan
-  targetBasketSize?: number  // kolom H — target basket size
+  targetTrxDaily?:   number  // kolom E — target transaksi harian
+  targetTrxMonthly?: number  // kolom F — target transaksi bulanan
+  targetBasketSizeDaily?:   number  // kolom G — target basket size harian
+  targetBasketSizeMonthly?: number  // kolom H — target basket size bulanan
 }
 
 export async function fetchTargets(): Promise<Map<string, TargetData>> {
@@ -284,20 +306,32 @@ export async function fetchTargets(): Promise<Map<string, TargetData>> {
     if (emptyNikRows.length > 0) console.warn('[TARGET] Baris NIK kosong (nama-only):', emptyNikRows.map(r=>JSON.stringify(c(r,1))).join(', '))
     const normN = (s: string) => s.toUpperCase().replace(/[.\-,]/g, ' ').replace(/\s+/g, ' ').trim()
     const map = new Map<string, TargetData>()
+    const nikIdx = getConfiguredColumnIndex('TARGET', 'TARGET_NIK', 0)
+    const namaIdx = getConfiguredColumnIndex('TARGET', 'TARGET_NAMA', 1)
+    const dailyIdx = getConfiguredColumnIndex('TARGET', 'TARGET_DAILY', 2)
+    const monthlyIdx = getConfiguredColumnIndex('TARGET', 'TARGET_MONTHLY', 3)
+    const trxDailyIdx = getConfiguredColumnIndex('TARGET', 'TARGET_TRX_DAILY', 4)
+    const trxMonthlyIdx = getConfiguredColumnIndex('TARGET', 'TARGET_TRX_MONTHLY', 5)
+    const basketSizeDailyIdx = getConfiguredColumnIndex('TARGET', 'TARGET_BASKET_SIZE_DAILY', 6)
+    const basketSizeMonthlyIdx = getConfiguredColumnIndex('TARGET', 'TARGET_BASKET_SIZE_MONTHLY', 7)
+    const jobTitleIdx = getConfiguredColumnIndex('TARGET', 'TARGET_JOB_TITLE', 8)
+
     for (const row of raw.slice(1)) {
-      const nik  = c(row, 0)
-      const nama = c(row, 1).replace(/^[A-Z]{2,3}-/i, '').trim()
-      const daily          = numVal(c(row, 2))
-      const monthly        = numVal(c(row, 3)) || daily * 26
-      const targetTrxDaily   = numVal(c(row, 4)) || 0
-      const targetTrxMonthly = numVal(c(row, 5)) || 0
-      const targetBasketSize = numVal(c(row, 6)) || 0
-      const jobTitle         = c(row, 7) || ''
+      const nik  = c(row, nikIdx)
+      const nama = c(row, namaIdx).replace(/^[A-Z]{2,3}-/i, '').trim()
+      const daily          = numVal(c(row, dailyIdx))
+      const monthly        = numVal(c(row, monthlyIdx)) || daily * 26
+      const targetTrxDaily   = numVal(c(row, trxDailyIdx)) || 0
+      const targetTrxMonthly = numVal(c(row, trxMonthlyIdx)) || 0
+      const targetBasketSizeDaily = numVal(c(row, basketSizeDailyIdx)) || 0
+      const targetBasketSizeMonthly = numVal(c(row, basketSizeMonthlyIdx)) || 0
+      const jobTitle         = c(row, jobTitleIdx) || ''
       if (daily <= 0) continue
       const entry: TargetData = { daily, monthly, nama, jobTitle,
         targetTrxDaily:   targetTrxDaily   || undefined,
         targetTrxMonthly: targetTrxMonthly || undefined,
-        targetBasketSize: targetBasketSize || undefined,
+        targetBasketSizeDaily: targetBasketSizeDaily || undefined,
+        targetBasketSizeMonthly: targetBasketSizeMonthly || undefined,
       }
       // Simpan by NIK (kalau NIK terbaca oleh gviz)
       if (nik && /^[Ii]?\d{4,}$/.test(nik)) map.set(nik, entry)
@@ -322,29 +356,33 @@ export async function fetchMemberData(): Promise<MemberEntry[]> {
   try {
     const raw = await fetchCSV('MEMBER')
     const entries: MemberEntry[] = []
+    const table1TanggalIdx = getConfiguredColumnIndex('MEMBER', 'MEMBER_TABLE1_TANGGAL', 1)
+    const table1LabelIdx = getConfiguredColumnIndex('MEMBER', 'MEMBER_TABLE1_LABEL', 4)
+    const table1NamaIdx = getConfiguredColumnIndex('MEMBER', 'MEMBER_TABLE1_NAMA', 5)
+    const table2TanggalIdx = getConfiguredColumnIndex('MEMBER', 'MEMBER_TABLE2_TANGGAL', 7)
+    const table2NikIdx = getConfiguredColumnIndex('MEMBER', 'MEMBER_TABLE2_NIK', 9)
+    const table2CountIdx = getConfiguredColumnIndex('MEMBER', 'MEMBER_TABLE2_COUNT', 10)
 
-    // Skip header row — find it by looking for 'TANGGAL' in col B or col H
+    // Skip header row — find it by looking for 'TANGGAL' in the configured date columns
     const dataStart = raw.findIndex(r =>
-      c(r, 1).toUpperCase().includes('TANGGAL') || c(r, 7).toUpperCase().includes('TANGGAL')
+      c(r, table1TanggalIdx).toUpperCase().includes('TANGGAL') || c(r, table2TanggalIdx).toUpperCase().includes('TANGGAL')
     )
     const rows = raw.slice(dataStart >= 0 ? dataStart + 1 : 1)
 
     for (const row of rows) {
-      // ── Table 1: B(1)=TANGGAL, E(4)=label, F(5)=NAMA ──────────────────
-      // Count each row where E contains "NEW MEMBER" (text flag, not a number)
-      const tgl1   = c(row, 1)
-      const label1 = c(row, 4).toUpperCase()
-      const nama   = c(row, 5)
+      // ── Table 1 ───────────────────────────────────────────────────────
+      const tgl1   = c(row, table1TanggalIdx)
+      const label1 = c(row, table1LabelIdx).toUpperCase()
+      const nama   = c(row, table1NamaIdx)
       if (tgl1 && label1.includes('NEW MEMBER') && nama) {
         const date = parseDate(tgl1) ?? parseDateUS(tgl1)
         if (date) entries.push({ date, nikOrNama: nama.toUpperCase(), count: 1, byNik: false })
       }
 
-      // ── Table 2: H(7)=TANGGAL, J(9)=NIK, K(10)=label ──────────────────
-      // K may be "NEW MEMBER" text (count 1) OR a numeric value (sum it)
-      const tgl2   = c(row, 7)
-      const nik    = c(row, 9)
-      const kVal   = c(row, 10)
+      // ── Table 2 ───────────────────────────────────────────────────────
+      const tgl2   = c(row, table2TanggalIdx)
+      const nik    = c(row, table2NikIdx)
+      const kVal   = c(row, table2CountIdx)
       if (tgl2 && nik && kVal) {
         const numK = numVal(kVal)
         const count = numK > 0 ? numK : kVal.toUpperCase().includes('NEW MEMBER') ? 1 : 0
@@ -448,7 +486,7 @@ function makeKPIs(
   const days         = isMTD ? workingDays : 1
   const trxDailyBase = tgtData?.targetTrxDaily || Math.max(1, Math.round(dailyTarget / 450_000))
   const targetTr     = Math.max(1, trxDailyBase * days)
-  const targetBsBase = tgtData?.targetBasketSize || Math.round(dailyTarget * 0.7)
+  const targetBsBase = tgtData?.targetBasketSizeDaily ?? Math.round(dailyTarget * 0.7)
 
   const kpiSettings = settings.filter(s => s.section === 'KPI' && s.aktif)
   const katSettings = settings.filter(s => s.section === 'KATEGORI')
@@ -844,25 +882,33 @@ export async function fetchYTDData(currentNik: string): Promise<YTDEmployee | nu
     const raw = await fetchCSV('YEAR TO DATE')
     if (raw.length < 2) return null
 
+    const nikIdx = getConfiguredColumnIndex('YEAR TO DATE', 'YTD_NIK', 0)
+    const namaIdx = getConfiguredColumnIndex('YEAR TO DATE', 'YTD_NAMA', 1)
+    const quadrantIdx = getConfiguredColumnIndex('YEAR TO DATE', 'YTD_QUADRANT', 3)
+    const scoreIdx = getConfiguredColumnIndex('YEAR TO DATE', 'YTD_SCORE', 4)
+    const colorZoneIdx = getConfiguredColumnIndex('YEAR TO DATE', 'YTD_COLOR_ZONE', 5)
+    const salesPctIdx = getConfiguredColumnIndex('YEAR TO DATE', 'YTD_SALES_PCT', 7)
+    const monthlyBlockStart = getConfiguredColumnIndex('YEAR TO DATE', 'YTD_MONTHLY_BLOCK_START', 9)
+
     // Row 0 = month names (JANUARI…), Row 1 = sub-headers, Row 2+ = data
     const dataStart = 2
 
     // Find employee row
     const normCurrentNik = normNik(currentNik)
-    const row = raw.slice(dataStart).find(r => normNik((r[0] ?? '').trim()) === normCurrentNik)
+    const row = raw.slice(dataStart).find(r => normNik((r[nikIdx] ?? '').trim()) === normCurrentNik)
     if (!row) return null
 
-    const nama = (row[1] ?? '').trim()
+    const nama = (row[namaIdx] ?? '').trim()
 
     // YTD summary columns
-    const ytdQuadrant  = (row[3] ?? '').trim()
-    const ytdScore     = numVal(row[4] ?? '')
-    const ytdColorZone = (row[5] ?? '').trim()
-    const ytdSalesPct  = numVal(row[7] ?? '')
+    const ytdQuadrant  = (row[quadrantIdx] ?? '').trim()
+    const ytdScore     = numVal(row[scoreIdx] ?? '')
+    const ytdColorZone = (row[colorZoneIdx] ?? '').trim()
+    const ytdSalesPct  = numVal(row[salesPctIdx] ?? '')
 
-    // Monthly blocks: 12 months, each block 9 cols starting at col 9
+    // Monthly blocks: 12 months, each block 9 cols starting from the configured base column
     const months: YTDMonth[] = MONTH_NAMES.map((name, mi) => {
-      const base = 9 + mi * 9
+      const base = monthlyBlockStart + mi * 9
       const zone = (row[base + 0] ?? '').trim()
       const quad = (row[base + 1] ?? '').trim()
       const sv   = numVal(row[base + 2] ?? '')
@@ -902,18 +948,27 @@ export async function fetchAllYTD(): Promise<YTDEmployee[]> {
   try {
     const raw = await fetchCSV('YEAR TO DATE')
     if (raw.length < 2) return []
+
+    const nikIdx = getConfiguredColumnIndex('YEAR TO DATE', 'YTD_NIK', 0)
+    const namaIdx = getConfiguredColumnIndex('YEAR TO DATE', 'YTD_NAMA', 1)
+    const quadrantIdx = getConfiguredColumnIndex('YEAR TO DATE', 'YTD_QUADRANT', 3)
+    const scoreIdx = getConfiguredColumnIndex('YEAR TO DATE', 'YTD_SCORE', 4)
+    const colorZoneIdx = getConfiguredColumnIndex('YEAR TO DATE', 'YTD_COLOR_ZONE', 5)
+    const salesPctIdx = getConfiguredColumnIndex('YEAR TO DATE', 'YTD_SALES_PCT', 7)
+    const monthlyBlockStart = getConfiguredColumnIndex('YEAR TO DATE', 'YTD_MONTHLY_BLOCK_START', 9)
+
     const dataStart = 2
     const results: YTDEmployee[] = []
     for (const row of raw.slice(dataStart)) {
-      const nik = (row[0] ?? '').trim()
+      const nik = (row[nikIdx] ?? '').trim()
       if (!nik) continue
-      const nama         = (row[1] ?? '').trim()
-      const ytdQuadrant  = (row[3] ?? '').trim()
-      const ytdScore     = numVal(row[4] ?? '')
-      const ytdColorZone = (row[5] ?? '').trim()
-      const ytdSalesPct  = numVal(row[7] ?? '')
+      const nama         = (row[namaIdx] ?? '').trim()
+      const ytdQuadrant  = (row[quadrantIdx] ?? '').trim()
+      const ytdScore     = numVal(row[scoreIdx] ?? '')
+      const ytdColorZone = (row[colorZoneIdx] ?? '').trim()
+      const ytdSalesPct  = numVal(row[salesPctIdx] ?? '')
       const months: YTDMonth[] = MONTH_NAMES.map((name, mi) => {
-        const base = 9 + mi * 9
+        const base = monthlyBlockStart + mi * 9
         const zone = (row[base + 0] ?? '').trim()
         const quad = (row[base + 1] ?? '').trim()
         const sv   = numVal(row[base + 2] ?? '')

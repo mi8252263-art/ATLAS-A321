@@ -45,9 +45,14 @@ export default function LoginPage({ onLogin }: Props) {
     } catch { /* fallback ke cached */ }
     const normNik = (s: string) => s.trim().toLowerCase()
     const inputNik = normNik(nik)
+    const authCandidates = [...freshUsers]
+    const fallbackAdmin = MOCK_USERS.find(u => u.role === 'admin')
+    if (fallbackAdmin && !authCandidates.some(u => normNik(u.nik) === normNik(fallbackAdmin.nik))) {
+      authCandidates.unshift(fallbackAdmin)
+    }
     console.warn('[LOGIN] Input NIK:', JSON.stringify(nik), '→ norm:', JSON.stringify(inputNik))
-    console.warn('[LOGIN] Total users:', freshUsers.length)
-    const match = freshUsers.find(u => normNik(u.nik) === inputNik)
+    console.warn('[LOGIN] Total users:', authCandidates.length)
+    const match = authCandidates.find(u => normNik(u.nik) === inputNik)
     console.warn('[LOGIN] Match:', match ? `NIK="${match.nik}" pw="${match.password}"` : 'TIDAK DITEMUKAN')
     if (match) console.warn('[LOGIN] pw check:', JSON.stringify(match.password), '===', JSON.stringify(password), '→', match.password === password)
     const normPw = (s: string) => s.trim().toLowerCase()

@@ -1,3 +1,5 @@
+import { getConfiguredColumnIndex } from './columnMappingService'
+
 const SHEET_ID = '1mNGKDPFNnF1Ca0CtNzyriwTE8zjuwdJei0RafXxna38'
 
 function ci(col: string): number {
@@ -75,8 +77,40 @@ export async function fetchPencapaianToko(): Promise<TokoRow[]> {
   const text = await res.text()
   if (!res.ok || text.trimStart().startsWith('<!')) throw new Error('Sheet "Pencapaian Toko" tidak bisa dibaca')
   const raw = parseCSV(text)
+  const dateIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_DATE', 1)
+  const salesDailyIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_SALES_DAILY', 9)
+  const targetDailyIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_TARGET_SALES_DAILY', 8)
+  const trafficIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_TRAFFIC_DAILY', 3)
+  const targetTrafficIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_TARGET_TRAFFIC_DAILY', 17)
+  const transaksiIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_TRANSAKSI_DAILY', 4)
+  const targetTransaksiIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_TARGET_TRANSAKSI_DAILY', 22)
+  const newMemberIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_NEW_MEMBER_DAILY', 5)
+  const targetNewMemberIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_TARGET_NEW_MEMBER_DAILY', 38)
+  const instantUpgradeIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_INSTANT_UPGRADE_DAILY', 6)
+  const proteksiIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_PROTEKSI_DAILY', 7)
+  const targetProteksiIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_TARGET_PROTEKSI_DAILY', 33)
+  const salesOnlineIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_SALES_ONLINE_DAILY', 16)
+  const targetOnlineIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_TARGET_ONLINE_DAILY', 15)
+  const salesOfflineIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_SALES_OFFLINE_DAILY', 14)
+  const basketSizeIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_BASKET_SIZE_DAILY', 28)
+  const targetBasketSizeIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_TARGET_BASKET_SIZE_DAILY', 27)
+  const salesMTDIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_SALES_MTD', 12)
+  const targetMTDIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_TARGET_SALES_MTD', 11)
+  const trafficMTDIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_TRAFFIC_MTD', 20)
+  const targetTrafficMTDIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_TARGET_TRAFFIC_MTD', 19)
+  const transaksiMTDIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_TRANSAKSI_MTD', 25)
+  const targetTransaksiMTDIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_TARGET_TRANSAKSI_MTD', 24)
+  const proteksiMTDIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_PROTEKSI_MTD', 36)
+  const targetProteksiMTDIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_TARGET_PROTEKSI_MTD', 35)
+  const newMemberMTDIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_NEW_MEMBER_MTD', 41)
+  const targetNewMemberMTDIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_TARGET_NEW_MEMBER_MTD', 40)
+  const basketSizeMTDIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_BASKET_SIZE_MTD', 31)
+  const targetBasketSizeMTDIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_TARGET_BASKET_SIZE_MTD', 30)
+  const salesOnlineMTDIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_SALES_ONLINE_MTD', 49)
+  const targetOnlineMTDIdx = getConfiguredColumnIndex('Pencapaian Toko', 'TOKO_TARGET_ONLINE_MTD', 48)
+
   // Debug: log semua baris dengan kolom B & U untuk cek date vs trafficMTD
-  const dataRows = raw.slice(3).filter(r => g(r, ci('B')))
+  const dataRows = raw.slice(3).filter(r => g(r, dateIdx))
   dataRows.forEach((r, i) => {
     const b = g(r, ci('B')), u = g(r, ci('U')), t = g(r, ci('T'))
     if (u || i < 15) console.warn(`[TOKO ROW ${i+1}] date=${b} | T(tgtTrafficMTD)=${t} | U(trafficMTD)=${u}`)

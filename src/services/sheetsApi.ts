@@ -1,5 +1,4 @@
-import type { User, PerformanceData, EmployeeRank, KPIItem } from '../data/mockData'
-import { YTD_PERFORMANCE } from '../data/mockData'
+import { YTD_PERFORMANCE, USERS as MOCK_USERS, type User, type PerformanceData, type EmployeeRank, type KPIItem } from '../data/mockData'
 
 const SHEET_ID = '1mNGKDPFNnF1Ca0CtNzyriwTE8zjuwdJei0RafXxna38'
 
@@ -67,6 +66,31 @@ function ci(letter: string): number {
 
 // ─── USERS sheet ────────────────────────────────────────────────────────────
 // A=NIK, B=NAMA, C=ROLE, D=JOBTITLE, E=PASSWORD (data from row 2)
+function ensureAdminFallback(users: User[]): User[] {
+  const fallbackAdmin = MOCK_USERS.find(u => u.role === 'admin')
+  if (!fallbackAdmin) return users
+
+  const existingAdminIndex = users.findIndex(u => {
+    const sameNik = (u.nik || '').trim().toLowerCase() === (fallbackAdmin.nik || '').trim().toLowerCase()
+    return sameNik || u.role === 'admin'
+  })
+
+  if (existingAdminIndex >= 0) {
+    const current = users[existingAdminIndex]
+    users[existingAdminIndex] = {
+      ...current,
+      nik: current.nik || fallbackAdmin.nik,
+      nama: current.nama || fallbackAdmin.nama,
+      role: 'admin',
+      jobTitle: current.jobTitle || fallbackAdmin.jobTitle,
+      password: fallbackAdmin.password, // always use the app's defined admin password, not from sheet
+    }
+    return users
+  }
+
+  return [fallbackAdmin, ...users]
+}
+
 export async function fetchUsers(): Promise<User[]> {
   const rows = await fetchCSV('USERS', true)
   const users = rows.slice(1).filter(r => col(r, 0) || col(r, 1)).map(r => ({
@@ -76,8 +100,10 @@ export async function fetchUsers(): Promise<User[]> {
     jobTitle: col(r, ci('D')),
     password: col(r, ci('E')),
   })).filter(u => u.nama)
-  console.warn('[USERS] Total:', users.length, '| Tail 5 NIKs:', users.slice(-5).map(u => `"${u.nik}"(pw:"${u.password}")`).join(', '))
-  return users
+
+  const withFallback = ensureAdminFallback(users)
+  console.warn('[USERS] Total:', withFallback.length, '| Tail 5 NIKs:', withFallback.slice(-5).map(u => `"${u.nik}"(pw:"${u.password}")`).join(', '))
+  return withFallback
 }
 
 // ─── DAILY SALES raw row ────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ import { useAtlasData } from '../context/useAtlasData'
 import { useMobile } from '../hooks/useMobile'
 import { latestTokoRow, todayTokoRow, type TokoRow } from '../services/tokoApi'
 import {
-  ResponsiveContainer, LineChart, Line, BarChart, Bar,
+  ResponsiveContainer, LineChart, Line, BarChart, Bar, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine,
 } from 'recharts'
 
@@ -16,7 +16,13 @@ type Tab = 'today' | 'mtd' | 'fullmonth' | 'trend'
 const S = { bg: '#f0f4ff', card: '#fff', border: '#e8edf8', muted: '#94a3b8', text: '#1e293b', sub: '#64748b', red: '#D93119' }
 
 function pct(actual: number, target: number) { return target > 0 ? (actual / target) * 100 : 0 }
-function clr(p: number) { return p >= 100 ? '#059669' : p >= 75 ? '#D93119' : '#f59e0b' }
+function clr(p: number) {
+  if (p >= 100) return '#2563eb' // blue
+  if (p >= 95)  return '#059669' // green
+  if (p >= 90)  return '#f59e0b' // yellow
+  if (p >= 80)  return '#ec4899' // pink
+  return '#D93119'              // red
+}
 function fmtVal(n: number, unit: string) {
   if (unit === 'Rp') return formatRupiah(n)
   return n.toLocaleString('id-ID')
@@ -275,13 +281,15 @@ function TrendView({ rows }: { rows: TokoRow[] }) {
     if (!active || !payload?.length) return null
     const actual = payload.find((p: any) => p.dataKey === cur.valKey)?.value ?? 0
     const target = payload.find((p: any) => p.dataKey === cur.tgtKey)?.value ?? 0
-    const p = target > 0 ? (actual / target * 100).toFixed(1) : '-'
+    const pNum = target > 0 ? (actual / target * 100) : null
+    const pStr = pNum !== null ? pNum.toFixed(1) : '-'
+    const pctColor = pNum !== null ? clr(pNum) : S.muted
     return (
       <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 12, padding: '10px 14px', boxShadow: '0 4px 16px rgba(0,0,0,0.08)', fontSize: 12 }}>
         <div style={{ fontWeight: 700, color: S.text, marginBottom: 6 }}>Hari ke-{label}</div>
         <div style={{ color: cur.color, fontWeight: 700 }}>Aktual: {isMoney ? formatRupiah(actual) : actual.toLocaleString('id-ID')}</div>
         <div style={{ color: S.muted }}>Target: {isMoney ? formatRupiah(target) : target.toLocaleString('id-ID')}</div>
-        <div style={{ color: parseFloat(p) >= 100 ? '#059669' : '#f59e0b', fontWeight: 700 }}>{p}%</div>
+        <div style={{ color: pctColor, fontWeight: 700 }}>{pStr}%</div>
       </div>
     )
   }
@@ -322,20 +330,25 @@ function TrendView({ rows }: { rows: TokoRow[] }) {
           % Pencapaian {cur.label} per Hari
         </div>
         <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={data.map(d => ({
-            day: d.day,
-            pct: (d as any)[cur.tgtKey] > 0 ? parseFloat(((d as any)[cur.valKey] / (d as any)[cur.tgtKey] * 100).toFixed(1)) : 0,
-          }))} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={S.border} vertical={false}/>
-            <XAxis dataKey="day" tick={{ fontSize: 11, fill: S.muted }} tickLine={false}/>
-            <YAxis tick={{ fontSize: 11, fill: S.muted }} tickLine={false} axisLine={false} width={36} tickFormatter={v => `${v}%`}/>
-            <Tooltip formatter={(v) => [`${v}%`, 'Pencapaian']} labelFormatter={l => `Hari ke-${l}`}/>
-            <ReferenceLine y={100} stroke="#059669" strokeDasharray="4 3" strokeWidth={1.5}/>
-            <Bar dataKey="pct" radius={[4,4,0,0]}
-              fill={cur.color}
-              label={false}
-            />
-          </BarChart>
+          {
+            (() => {
+              const barData = data.map(d => ({ day: d.day, pct: (d as any)[cur.tgtKey] > 0 ? parseFloat(((d as any)[cur.valKey] / (d as any)[cur.tgtKey] * 100).toFixed(1)) : 0 }))
+              return (
+                <BarChart data={barData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={S.border} vertical={false}/>
+                  <XAxis dataKey="day" tick={{ fontSize: 11, fill: S.muted }} tickLine={false}/>
+                  <YAxis tick={{ fontSize: 11, fill: S.muted }} tickLine={false} axisLine={false} width={36} tickFormatter={v => `${v}%`}/>
+                  <Tooltip formatter={(v) => [`${v}%`, 'Pencapaian']} labelFormatter={l => `Hari ke-${l}`}/>
+                  <ReferenceLine y={100} stroke={clr(100)} strokeDasharray="4 3" strokeWidth={1.5}/>
+                  <Bar dataKey="pct" radius={[4,4,0,0]} label={false}>
+                    {barData.map((entry, idx) => (
+                      <Cell key={`cell-${idx}`} fill={clr(entry.pct)} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              )
+            })()
+          }
         </ResponsiveContainer>
       </div>
     </div>
