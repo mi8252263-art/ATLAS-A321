@@ -420,12 +420,12 @@ export default function ForecastingInsentif({ user, onBack }: Props) {
           <div style={{ position: 'relative', borderRadius: 28, overflow: 'hidden', background: 'linear-gradient(135deg, #4338ca 0%, #7c3aed 100%)', minHeight: 260, padding: isMobile ? '22px 20px' : '28px 30px', boxShadow: '0 20px 50px rgba(67, 56, 202, 0.18)', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 22 }}>
             <div style={{ position: 'absolute', right: -40, top: -30, width: 140, height: 140, borderRadius: '50%', background: 'rgba(255, 255, 255, 0.14)' }} />
             <div style={{ position: 'absolute', right: 20, bottom: -30, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255, 255, 255, 0.08)' }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
-              <div>
+            <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'flex-start', gap: 20 }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.18em', marginBottom: 12 }}>Total Insentif Anda</div>
                 <div style={{ color: '#ffffff', fontSize: 36, fontWeight: 900, lineHeight: 1.05, maxWidth: 360 }}>{formatRupiahFull(totalProjected)}</div>
               </div>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.16)', borderRadius: 999, padding: '10px 14px', color: '#ffffff', fontSize: 12, fontWeight: 700 }}>
+              <div style={{ display: 'inline-flex', flexShrink: 0, alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.16)', borderRadius: 999, padding: '10px 14px', color: '#ffffff', fontSize: 12, fontWeight: 700, marginTop: isMobile ? 12 : 0, whiteSpace: 'nowrap' }}>
                 <span style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(255,255,255,0.24)', display: 'grid', placeItems: 'center' }}>👤</span>
                 NIK {user.nik}
               </div>
