@@ -362,7 +362,7 @@ export default function ForecastingInsentif({ user, onBack }: Props) {
     const conditionalAchieved = conditionalRows.reduce((sum, row) => sum + row.items.filter(item => isStatusFulfilled(item.status || '')).reduce((subSum, item) => subSum + item.amount, 0), 0)
     const conditionalPotential = conditionalRows.reduce((sum, row) => sum + row.items.filter(item => !isStatusFulfilled(item.status || '')).reduce((subSum, item) => subSum + item.amount, 0), 0)
     const unconditionalAchieved = unconditionalRows.reduce((sum, row) => sum + row.value, 0)
-    const skuAchieved = skuRows.reduce((sum, row) => sum + row.incentiveValue, 0)
+    const skuAchieved = 0
     const skuForecast = 0
 
     return [
@@ -387,9 +387,14 @@ export default function ForecastingInsentif({ user, onBack }: Props) {
     ]
   }, [data, user.nik, user.nama])
 
-  const totalPotential = summary.find(item => item.type === 'bersyarat')?.forecast ?? 0
-  const totalAchieved = summary.reduce((sum, item) => sum + item.achieved, 0)
-  const totalProjected = totalAchieved + totalPotential
+  const totalPotential =
+  summary.find(item => item.type === 'bersyarat')?.forecast ?? 0
+
+const totalAchieved = summary
+  .filter(item => item.type !== 'sku')
+  .reduce((sum, item) => sum + item.achieved, 0)
+
+const totalProjected = totalAchieved + totalPotential
 
   if (subPage) {
     return <SubPageView type={subPage} data={data} user={user} isMobile={isMobile} onBack={() => setSubPage(null)} />

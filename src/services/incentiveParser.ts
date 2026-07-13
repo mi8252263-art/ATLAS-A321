@@ -242,10 +242,10 @@ export function parseIncentiveSheets(sheets: Record<string, string[][]>): Parsed
       totalTarget: unconditionalRows.reduce((acc, row) => acc + row.items.reduce((sum, item) => sum + item.amount, 0), 0),
       totalAchieved: unconditionalRows.reduce((acc, row) => acc + row.items.reduce((sum, item) => sum + item.amount, 0), 0),
     },
-    sku: {
-      rows: skuRows,
-      totalTarget: skuRows.reduce((acc, row) => acc + row.incentiveValue, 0),
-      totalAchieved: skuRows.reduce((acc, row) => acc + row.incentiveValue, 0),
-    },
+     sku: {
+     rows: skuRows,
+     totalTarget: 0,
+     totalAchieved: 0,
+     },
   }
 }
